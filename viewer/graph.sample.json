@@ -1,0 +1,83 @@
+{
+  "generatedBy" : "FlowLens 0.1.0",
+  "nodes" : [ {
+    "id" : "EP:com.example.demo.AccountController#createAccount",
+    "label" : "AccountController.createAccount()",
+    "type" : "endpoint",
+    "layer" : "controller",
+    "http" : "POST /api/createAccount",
+    "file" : "AccountController.java",
+    "line" : 18,
+    "conditions" : [ ],
+    "mutations" : [ ],
+    "source" : "@PostMapping(\"/createAccount\")\r\npublic Account createAccount(@RequestBody CreateAccountRequest request) {\r\n    return accountService.create(request);\r\n}"
+  }, {
+    "id" : "M:com.example.demo.AccountService#create/1",
+    "label" : "AccountService.create()",
+    "type" : "method",
+    "layer" : "service",
+    "file" : "AccountService.java",
+    "line" : 16,
+    "conditions" : [ "if (accountRepository.existsByEmail(request.getEmail()))", "if (request.getName() != null && request.getName().length() > 2)" ],
+    "mutations" : [ "account.setEmail(request.getEmail())", "account.setName(request.getName())", "account.setStatus(\"ACTIVE\")", "account.setStatus(\"PENDING\")" ],
+    "source" : "public Account create(CreateAccountRequest request) {\r\n    if (accountRepository.existsByEmail(request.getEmail())) {\r\n        throw new IllegalStateException(\"email already registered\");\r\n    }\r\n    Account account = new Account();\r\n    account.setEmail(request.getEmail());\r\n    account.setName(request.getName());\r\n    if (request.getName() != null && request.getName().length() > 2) {\r\n        account.setStatus(\"ACTIVE\");\r\n    } else {\r\n        account.setStatus(\"PENDING\");\r\n    }\r\n    Account saved = accountRepository.save(account);\r\n    auditService.record(\"account.created\", saved.getId());\r\n    return saved;\r\n}"
+  }, {
+    "id" : "DB:SELECT:account",
+    "label" : "SELECT account",
+    "type" : "db",
+    "layer" : "db",
+    "op" : "SELECT",
+    "table" : "account",
+    "conditions" : [ ],
+    "mutations" : [ ]
+  }, {
+    "id" : "DB:UPSERT:account",
+    "label" : "UPSERT account",
+    "type" : "db",
+    "layer" : "db",
+    "op" : "UPSERT",
+    "table" : "account",
+    "conditions" : [ ],
+    "mutations" : [ ]
+  }, {
+    "id" : "M:com.example.demo.AuditService#record/2",
+    "label" : "AuditService.record()",
+    "type" : "method",
+    "layer" : "service",
+    "file" : "AuditService.java",
+    "line" : 15,
+    "conditions" : [ ],
+    "mutations" : [ ],
+    "source" : "public void record(String event, Long entityId) {\r\n    jdbcTemplate.update(\"INSERT INTO audit_log (event, entity_id) VALUES (?, ?)\", event, entityId);\r\n}"
+  }, {
+    "id" : "DB:INSERT:audit_log",
+    "label" : "INSERT audit_log",
+    "type" : "db",
+    "layer" : "db",
+    "op" : "INSERT",
+    "table" : "audit_log",
+    "conditions" : [ ],
+    "mutations" : [ ]
+  } ],
+  "edges" : [ {
+    "source" : "EP:com.example.demo.AccountController#createAccount",
+    "target" : "M:com.example.demo.AccountService#create/1",
+    "label" : "create"
+  }, {
+    "source" : "M:com.example.demo.AccountService#create/1",
+    "target" : "DB:SELECT:account",
+    "label" : "AccountRepository.existsByEmail()"
+  }, {
+    "source" : "M:com.example.demo.AccountService#create/1",
+    "target" : "DB:UPSERT:account",
+    "label" : "AccountRepository.save()"
+  }, {
+    "source" : "M:com.example.demo.AccountService#create/1",
+    "target" : "M:com.example.demo.AuditService#record/2",
+    "label" : "record"
+  }, {
+    "source" : "M:com.example.demo.AuditService#record/2",
+    "target" : "DB:INSERT:audit_log",
+    "label" : "jdbc.update()"
+  } ]
+}

@@ -1,0 +1,25 @@
+# Java / Maven
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+dependency-reduced-pom.xml
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS
+.DS_Store
+Thumbs.db
+
+# FlowLens output (generated graphs; keep viewer/graph.sample.json only)
+viewer/graph.json
+
+# scratch
+scratch/
+*.log

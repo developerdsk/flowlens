@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlowLens — Java Data-Flow Viewer</title>
+<script src="vendor/cytoscape.min.js"></script>
+<script src="vendor/dagre.min.js"></script>
+<script src="vendor/cytoscape-dagre.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #161d2e; --panel2: #1e2740; --line: #2a3652;
+    --text: #e6ebf5; --muted: #93a1c0; --accent: #7c3aed;
+    --controller: #8b5cf6; --service: #3b82f6; --repository: #06b6d4;
+    --db-read: #64748b; --db-write: #22c55e; --db-update: #eab308; --db-delete: #ef4444;
+    --other: #64748b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { background: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; }
+
+  header {
+    display: flex; align-items: center; gap: 16px; padding: 10px 16px;
+    background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap;
+  }
+  header .brand { font-weight: 700; font-size: 16px; letter-spacing: .3px; }
+  header .brand span { color: var(--accent); }
+  header .tagline { color: var(--muted); font-size: 12px; }
+  header .spacer { flex: 1; }
+  select, button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 10px; font-size: 13px; cursor: pointer;
+  }
+  .layers { display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--muted); }
+  .layers label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  main { flex: 1; display: flex; min-height: 0; }
+  #cy { flex: 1; min-width: 0; }
+  aside {
+    width: 380px; background: var(--panel); border-left: 1px solid var(--line);
+    overflow-y: auto; padding: 16px; font-size: 13px;
+  }
+  aside .empty { color: var(--muted); margin-top: 40px; text-align: center; }
+  aside h2 { font-size: 15px; margin: 0 0 4px; }
+  aside .badge {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    background: var(--panel2); color: var(--muted); margin-right: 6px;
+  }
+  aside .meta { color: var(--muted); font-size: 12px; margin: 8px 0 14px; }
+  aside .http { font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--controller); font-weight: 600; }
+  aside .op { font-family: ui-monospace, monospace; font-weight: 700; }
+  section.detail { margin-bottom: 16px; }
+  section.detail .title { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin-bottom: 6px; }
+  ul.list { list-style: none; margin: 0; padding: 0; }
+  ul.list li {
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 8px; margin-bottom: 5px; word-break: break-word;
+  }
+  ul.list li.cond { border-left: 3px solid var(--db-update); }
+  ul.list li.mut { border-left: 3px solid var(--service); }
+  pre.source {
+    background: #0b0f18; border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px; overflow-x: auto; font-size: 12px; line-height: 1.5;
+    font-family: ui-monospace, Menlo, Consolas, monospace; color: #cdd6f4;
+  }
+  .hint { color: var(--muted); font-size: 12px; }
+  footer { padding: 6px 16px; background: var(--panel); border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="brand"><span>Flow</span>Lens</div>
+    <div class="tagline">endpoint → data flow → database</div>
+  </div>
+  <div class="spacer"></div>
+  <label class="hint">Endpoint:
+    <select id="endpointSelect"><option value="__all__">All endpoints</option></select>
+  </label>
+  <div class="layers" id="layerFilters"></div>
+  <button id="fitBtn">Fit</button>
+</header>
+
+<main>
+  <div id="cy"></div>
+  <aside id="panel">
+    <div class="empty">Click a node to see its request data, conditions, mutations, and source.</div>
+  </aside>
+</main>
+<footer id="stat">Loading graph…</footer>
+
+<script>
+const LAYER_COLOR = {
+  controller: getVar('--controller'), service: getVar('--service'),
+  repository: getVar('--repository'), db: getVar('--db-read'), other: getVar('--other')
+};
+const OP_COLOR = {
+  INSERT: getVar('--db-write'), UPSERT: getVar('--db-write'), UPDATE: getVar('--db-update'),
+  DELETE: getVar('--db-delete'), SELECT: getVar('--db-read'), CALL: getVar('--db-read')
+};
+function getVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+function nodeColor(n){
+  if (n.type === 'db') return OP_COLOR[n.op] || getVar('--db-read');
+  return LAYER_COLOR[n.layer] || getVar('--other');
+}
+function nodeShape(n){
+  if (n.type === 'endpoint') return 'round-rectangle';
+  if (n.type === 'db') return 'barrel';
+  return 'round-rectangle';
+}
+
+let graph = null, cy = null;
+const activeLayers = new Set(['controller','service','repository','db','other']);
+
+async function loadGraph(){
+  for (const url of ['graph.json','graph.sample.json']){
+    try {
+      const r = await fetch(url, {cache:'no-store'});
+      if (r.ok) return await r.json();
+    } catch(e){}
+  }
+  throw new Error('No graph.json or graph.sample.json found. Run the analyzer first.');
+}
+
+function buildElements(g){
+  const els = [];
+  for (const n of g.nodes){
+    els.push({ data: { id: n.id, label: n.label, ...n } });
+  }
+  for (const e of g.edges){
+    els.push({ data: { id: e.source+'|'+e.target+'|'+e.label, source: e.source, target: e.target, label: e.label } });
+  }
+  return els;
+}
+
+function initCy(g){
+  cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements: buildElements(g),
+    wheelSensitivity: 0.2,
+    style: [
+      { selector: 'node', style: {
+        'background-color': ele => nodeColor(ele.data()),
+        'shape': ele => nodeShape(ele.data()),
+        'label': 'data(label)', 'color': '#fff', 'font-size': 11, 'font-weight': 600,
+        'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'wrap', 'text-max-width': 150,
+        'width': 'label', 'height': 'label', 'padding': '10px',
+        'border-width': 2, 'border-color': 'rgba(255,255,255,0.15)'
+      }},
+      { selector: 'node[type="endpoint"]', style: { 'border-width': 3, 'border-color': '#fff', 'font-size': 12 }},
+      { selector: 'node[type="db"]', style: { 'font-family': 'monospace' }},
+      { selector: 'edge', style: {
+        'width': 1.8, 'line-color': '#3a4660',
+        'target-arrow-color': '#4a5a80', 'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier', 'label': 'data(label)', 'font-size': 9, 'color': '#93a1c0',
+        'text-background-color': '#0f1420', 'text-background-opacity': 0.85, 'text-background-padding': 2
+      }},
+      { selector: '.dimmed', style: { 'opacity': 0.08 }},
+      { selector: 'node:selected', style: { 'border-width': 4, 'border-color': '#fbbf24' }}
+    ],
+    layout: { name: 'dagre', rankDir: 'LR', nodeSep: 30, rankSep: 70, edgeSep: 12 }
+  });
+
+  cy.on('tap', 'node', evt => showDetail(evt.target.data()));
+  cy.on('tap', evt => { if (evt.target === cy) clearDetail(); });
+}
+
+function relayout(){
+  cy.layout({ name: 'dagre', rankDir: 'LR', nodeSep: 30, rankSep: 70, edgeSep: 12 }).run();
+}
+
+// --- endpoint filter: show only nodes reachable from the chosen endpoint ---
+function reachableFrom(id){
+  const seen = new Set([id]); const stack = [id];
+  const adj = {};
+  for (const e of graph.edges){ (adj[e.source] ||= []).push(e.target); }
+  while (stack.length){
+    const cur = stack.pop();
+    for (const nxt of (adj[cur]||[])) if (!seen.has(nxt)){ seen.add(nxt); stack.push(nxt); }
+  }
+  return seen;
+}
+
+function applyFilters(){
+  const ep = document.getElementById('endpointSelect').value;
+  const reach = ep === '__all__' ? null : reachableFrom(ep);
+  cy.batch(() => {
+    cy.nodes().forEach(n => {
+      const d = n.data();
+      const layerOk = activeLayers.has(d.layer || 'other');
+      const reachOk = !reach || reach.has(d.id);
+      n.style('display', (layerOk && reachOk) ? 'element' : 'none');
+    });
+    cy.edges().forEach(e => {
+      const vis = e.source().style('display') !== 'none' && e.target().style('display') !== 'none';
+      e.style('display', vis ? 'element' : 'none');
+    });
+  });
+  relayout();
+}
+
+// --- side panel ---
+function showDetail(n){
+  const p = document.getElementById('panel');
+  const parts = [];
+  parts.push(`<h2>${esc(n.label)}</h2>`);
+  parts.push(`<div>`);
+  parts.push(`<span class="badge">${esc(n.type)}</span>`);
+  if (n.layer) parts.push(`<span class="badge">${esc(n.layer)}</span>`);
+  parts.push(`</div>`);
+
+  const meta = [];
+  if (n.http) meta.push(`<span class="http">${esc(n.http)}</span>`);
+  if (n.type === 'db') meta.push(`<span class="op" style="color:${nodeColor(n)}">${esc(n.op)}</span> → <b>${esc(n.table)}</b>`);
+  if (n.file) meta.push(`${esc(n.file)}${n.line ? ':'+n.line : ''}`);
+  if (meta.length) parts.push(`<div class="meta">${meta.join(' &nbsp;·&nbsp; ')}</div>`);
+
+  if (n.conditions && n.conditions.length){
+    parts.push(section('Branch conditions', n.conditions.map(c => `<li class="cond">${esc(c)}</li>`).join('')));
+  }
+  if (n.mutations && n.mutations.length){
+    parts.push(section('Mutations', n.mutations.map(m => `<li class="mut">${esc(m)}</li>`).join('')));
+  }
+  if (n.source){
+    parts.push(`<section class="detail"><div class="title">Source</div><pre class="source">${esc(n.source)}</pre></section>`);
+  }
+  if (n.type === 'db'){
+    parts.push(`<p class="hint">This is a persistence sink resolved statically from the call above.</p>`);
+  }
+  p.innerHTML = parts.join('');
+}
+function section(title, inner){
+  return `<section class="detail"><div class="title">${esc(title)}</div><ul class="list">${inner}</ul></section>`;
+}
+function clearDetail(){
+  document.getElementById('panel').innerHTML =
+    '<div class="empty">Click a node to see its request data, conditions, mutations, and source.</div>';
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// --- controls ---
+function buildEndpointSelect(){
+  const sel = document.getElementById('endpointSelect');
+  graph.nodes.filter(n => n.type === 'endpoint').forEach(n => {
+    const o = document.createElement('option');
+    o.value = n.id; o.textContent = (n.http || n.label);
+    sel.appendChild(o);
+  });
+  sel.addEventListener('change', applyFilters);
+}
+function buildLayerFilters(){
+  const wrap = document.getElementById('layerFilters');
+  [['controller','Controller'],['service','Service'],['repository','Repository'],['db','DB'],['other','Other']]
+    .forEach(([key,label]) => {
+      const color = key === 'db' ? getVar('--db-write') : (LAYER_COLOR[key] || getVar('--other'));
+      const l = document.createElement('label');
+      l.innerHTML = `<input type="checkbox" checked data-layer="${key}"><span class="dot" style="background:${color}"></span>${label}`;
+      l.querySelector('input').addEventListener('change', e => {
+        e.target.checked ? activeLayers.add(key) : activeLayers.delete(key);
+        applyFilters();
+      });
+      wrap.appendChild(l);
+    });
+}
+
+(async function main(){
+  try {
+    cytoscape.use(cytoscapeDagre);
+    graph = await loadGraph();
+    initCy(graph);
+    buildEndpointSelect();
+    buildLayerFilters();
+    document.getElementById('fitBtn').addEventListener('click', () => cy.fit(null, 40));
+    const eps = graph.nodes.filter(n => n.type==='endpoint').length;
+    const dbs = graph.nodes.filter(n => n.type==='db').length;
+    document.getElementById('stat').textContent =
+      `${graph.nodes.length} nodes · ${eps} endpoints · ${dbs} db sinks · ${graph.edges.length} edges · ${graph.generatedBy||''}`;
+    cy.fit(null, 40);
+  } catch(e){
+    document.getElementById('stat').textContent = e.message;
+    document.getElementById('panel').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>
