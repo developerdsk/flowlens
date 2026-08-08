@@ -31,6 +31,17 @@
 
     <build>
         <finalName>flowlens-analyzer</finalName>
+        <resources>
+            <!-- Bundle the viewer UI into the jar so serve mode needs no extra files. -->
+            <resource>
+                <directory>${project.basedir}/../viewer</directory>
+                <targetPath>viewer</targetPath>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>graph.json</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

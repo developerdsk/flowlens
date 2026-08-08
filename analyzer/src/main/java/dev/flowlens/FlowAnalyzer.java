@@ -2,6 +2,7 @@ package dev.flowlens;
 
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.DataKey;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.*;
@@ -28,13 +29,43 @@ public class FlowAnalyzer {
             "GetMapping", "PostMapping", "PutMapping", "DeleteMapping", "PatchMapping", "RequestMapping");
     private static final Set<String> JDBC_TYPES = Set.of("JdbcTemplate", "NamedParameterJdbcTemplate");
 
+    private static final DataKey<String> FILE_PATH = new DataKey<>() {};
+
     private final ProjectModel model = new ProjectModel();
     private final Graph graph = new Graph();
 
-    public Graph analyze(Path sourceRoot) throws IOException {
-        List<CompilationUnit> units = parseAll(sourceRoot);
-        model.index(units);
+    /** A single Java source file: a display/relative path and its full text. */
+    public static class SourceFile {
+        public String path;
+        public String content;
+        public SourceFile() {}
+        public SourceFile(String path, String content) { this.path = path; this.content = content; }
+    }
 
+    /** Analyze a source tree on disk. */
+    public Graph analyze(Path sourceRoot) throws IOException {
+        return analyzeSources(collectSources(sourceRoot));
+    }
+
+    /** Analyze source files provided in memory (e.g. uploaded from the browser). */
+    public Graph analyzeSources(List<SourceFile> sources) {
+        List<CompilationUnit> units = new ArrayList<>();
+        for (SourceFile sf : sources) {
+            if (sf == null || sf.content == null) continue;
+            try {
+                CompilationUnit cu = StaticJavaParser.parse(sf.content);
+                if (sf.path != null) cu.setData(FILE_PATH, sf.path);
+                units.add(cu);
+            } catch (Exception e) {
+                System.err.println("[warn] skipped (parse error): " + sf.path + " — " + e.getMessage());
+            }
+        }
+        model.index(units);
+        buildGraph();
+        return graph;
+    }
+
+    private void buildGraph() {
         for (ProjectModel.TypeInfo type : model.byQualifiedName.values()) {
             if (!ProjectModel.CONTROLLER.equals(type.layer)) continue;
             String classPath = classLevelPath(type);
@@ -53,7 +84,6 @@ public class FlowAnalyzer {
                 });
             }
         }
-        return graph;
     }
 
     // --- the call-chain walk -------------------------------------------------
@@ -177,9 +207,10 @@ public class FlowAnalyzer {
             }
         }
         md.getBegin().ifPresent(pos -> node.line = pos.line);
-        md.findCompilationUnit()
-                .flatMap(CompilationUnit::getStorage)
-                .ifPresent(s -> node.file = s.getPath().getFileName().toString());
+        md.findCompilationUnit().ifPresent(cu -> {
+            if (cu.containsData(FILE_PATH)) node.file = cu.getData(FILE_PATH);
+            else cu.getStorage().ifPresent(s -> node.file = s.getPath().getFileName().toString());
+        });
         node.source = truncate(md.toString(), 4000);
     }
 
@@ -292,17 +323,18 @@ public class FlowAnalyzer {
         return s.length() <= max ? s : s.substring(0, max) + "…";
     }
 
-    private List<CompilationUnit> parseAll(Path root) throws IOException {
-        List<CompilationUnit> units = new ArrayList<>();
+    private List<SourceFile> collectSources(Path root) throws IOException {
+        List<SourceFile> sources = new ArrayList<>();
         try (Stream<Path> paths = Files.walk(root)) {
             for (Path p : (Iterable<Path>) paths.filter(x -> x.toString().endsWith(".java"))::iterator) {
                 try {
-                    units.add(StaticJavaParser.parse(p));
+                    String rel = root.relativize(p).toString().replace('\\', '/');
+                    sources.add(new SourceFile(rel, Files.readString(p)));
                 } catch (Exception e) {
-                    System.err.println("[warn] skipped (parse error): " + p + " — " + e.getMessage());
+                    System.err.println("[warn] could not read: " + p + " — " + e.getMessage());
                 }
             }
         }
-        return units;
+        return sources;
     }
 }

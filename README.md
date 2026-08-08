@@ -44,24 +44,48 @@ can generate from any checkout and read in the browser.
 
 ## Quick start
 
+You only need **Java 17+** and (for the first build) **Maven**.
+
 ```bash
-# 1. Build the analyzer
-cd analyzer
-mvn -q package
-
-# 2. Analyze a project (points at a source root; no build of the target needed)
-java -jar target/flowlens-analyzer.jar ../examples/sample-app ../viewer/graph.json
-
-# 3. Open the viewer
-#    serve the viewer/ folder (any static server) and open index.html
-cd ../viewer && python -m http.server 8000
-# → http://localhost:8000
+# macOS / Linux
+./run.sh
 ```
+```bat
+:: Windows
+run.bat
+```
+
+This builds the analyzer (first run only) and starts the viewer at
+**http://localhost:7070**. Then, in the browser:
+
+- Click **📁 Open project** and pick any Java/Spring folder — the browser reads its
+  `.java` files and indexes them. Nothing is uploaded to the internet; the analyzer
+  runs locally on your machine.
+- …or paste a **project path** on that machine and click **Index path**.
+
+That's the whole workflow — pick a folder, see the flow. To hand it to a teammate,
+give them the built `analyzer/target/flowlens-analyzer.jar` and have them run
+`java -jar flowlens-analyzer.jar --serve` (Java 17+, no Maven needed).
+
+### CLI (one-shot, no server)
+
+```bash
+cd analyzer && mvn -q package
+java -jar target/flowlens-analyzer.jar ../examples/sample-app ../viewer/graph.json
+# then serve viewer/ statically and open index.html
+```
+
+### Privacy / safety
+
+The `--serve` server binds to **127.0.0.1 only**. The "Index path" option reads files
+from disk on the machine running the server, so never expose it to a network.
 
 ## Status
 
 Early MVP. Working today:
 
+- **Point-and-index UI**: pick a local folder or paste a path — no CLI needed
+- Single-jar local server (`--serve`), viewer bundled inside; works on Windows & macOS
 - Spring MVC endpoint detection (`@GetMapping`/`@PostMapping`/`@RequestMapping`, etc.)
 - Inter-procedural call-chain walk across project classes (cycle-guarded)
 - Spring Data repository sink classification (`save`→UPSERT, `deleteBy…`→DELETE, `find…`→SELECT)

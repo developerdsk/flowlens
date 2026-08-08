@@ -20,20 +20,25 @@
   body { background: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; }
 
   header {
-    display: flex; align-items: center; gap: 16px; padding: 10px 16px;
+    display: flex; align-items: center; gap: 14px; padding: 10px 16px;
     background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap;
   }
   header .brand { font-weight: 700; font-size: 16px; letter-spacing: .3px; }
   header .brand span { color: var(--accent); }
   header .tagline { color: var(--muted); font-size: 12px; }
   header .spacer { flex: 1; }
-  select, button {
+  select, button, input[type="text"] {
     background: var(--panel2); color: var(--text); border: 1px solid var(--line);
-    border-radius: 6px; padding: 6px 10px; font-size: 13px; cursor: pointer;
+    border-radius: 6px; padding: 6px 10px; font-size: 13px;
   }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { filter: brightness(1.1); }
+  #pathInput { width: 230px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
   .layers { display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--muted); }
   .layers label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
   .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .divider { width: 1px; height: 24px; background: var(--line); }
 
   main { flex: 1; display: flex; min-height: 0; }
   #cy { flex: 1; min-width: 0; }
@@ -41,7 +46,7 @@
     width: 380px; background: var(--panel); border-left: 1px solid var(--line);
     overflow-y: auto; padding: 16px; font-size: 13px;
   }
-  aside .empty { color: var(--muted); margin-top: 40px; text-align: center; }
+  aside .empty { color: var(--muted); margin-top: 40px; text-align: center; line-height: 1.6; }
   aside h2 { font-size: 15px; margin: 0 0 4px; }
   aside .badge {
     display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
@@ -75,6 +80,13 @@
     <div class="brand"><span>Flow</span>Lens</div>
     <div class="tagline">endpoint → data flow → database</div>
   </div>
+
+  <div class="divider"></div>
+  <button id="openFolderBtn" class="primary" title="Pick a Java/Spring project folder to index">📁 Open project</button>
+  <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none">
+  <input type="text" id="pathInput" placeholder="…or paste a project path" spellcheck="false">
+  <button id="indexPathBtn">Index path</button>
+
   <div class="spacer"></div>
   <label class="hint">Endpoint:
     <select id="endpointSelect"><option value="__all__">All endpoints</option></select>
@@ -86,10 +98,11 @@
 <main>
   <div id="cy"></div>
   <aside id="panel">
-    <div class="empty">Click a node to see its request data, conditions, mutations, and source.</div>
+    <div class="empty">Open a project folder (or paste a path) to index it,<br>then click any node to see its
+      request data, branch conditions, mutations, and source.</div>
   </aside>
 </main>
-<footer id="stat">Loading graph…</footer>
+<footer id="stat">Ready.</footer>
 
 <script>
 const LAYER_COLOR = {
@@ -101,38 +114,69 @@ const OP_COLOR = {
   DELETE: getVar('--db-delete'), SELECT: getVar('--db-read'), CALL: getVar('--db-read')
 };
 function getVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
-
-function nodeColor(n){
-  if (n.type === 'db') return OP_COLOR[n.op] || getVar('--db-read');
-  return LAYER_COLOR[n.layer] || getVar('--other');
-}
-function nodeShape(n){
-  if (n.type === 'endpoint') return 'round-rectangle';
-  if (n.type === 'db') return 'barrel';
-  return 'round-rectangle';
-}
+function nodeColor(n){ return n.type === 'db' ? (OP_COLOR[n.op] || getVar('--db-read')) : (LAYER_COLOR[n.layer] || getVar('--other')); }
+function nodeShape(n){ return n.type === 'db' ? 'barrel' : 'round-rectangle'; }
 
 let graph = null, cy = null;
 const activeLayers = new Set(['controller','service','repository','db','other']);
 
-async function loadGraph(){
+// --- data loading --------------------------------------------------------
+async function loadStaticGraph(){
   for (const url of ['graph.json','graph.sample.json']){
-    try {
-      const r = await fetch(url, {cache:'no-store'});
-      if (r.ok) return await r.json();
-    } catch(e){}
+    try { const r = await fetch(url, {cache:'no-store'}); if (r.ok) return await r.json(); } catch(e){}
   }
-  throw new Error('No graph.json or graph.sample.json found. Run the analyzer first.');
+  return null;
+}
+
+async function indexFolder(fileList){
+  const javaFiles = [...fileList].filter(f => f.name.endsWith('.java'));
+  if (!javaFiles.length){ setStatus('No .java files found in that folder.'); return; }
+  setStatus(`Reading ${javaFiles.length} .java files…`);
+  const files = [];
+  for (const f of javaFiles){
+    files.push({ path: f.webkitRelativePath || f.name, content: await f.text() });
+  }
+  setStatus(`Indexing ${files.length} files…`);
+  await postAnalyze({ files });
+}
+
+async function indexPath(path){
+  if (!path || !path.trim()){ setStatus('Enter a project path first.'); return; }
+  setStatus('Indexing ' + path + ' …');
+  await postAnalyze({ path: path.trim() });
+}
+
+async function postAnalyze(payload){
+  try {
+    const r = await fetch('/api/analyze', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    const data = await r.json();
+    if (!r.ok){ setStatus('Error: ' + (data.error || r.status)); return; }
+    if (!data.nodes || !data.nodes.length){ setStatus('No Spring endpoints found in that project.'); }
+    renderGraph(data);
+    const eps = data.nodes.filter(n => n.type==='endpoint').length;
+    setStatus(`Indexed ${data.nodes.length} nodes · ${eps} endpoints · ${data.edges.length} edges.`);
+  } catch(e){
+    setStatus('Cannot reach the FlowLens server. Start it with:  java -jar flowlens-analyzer.jar --serve');
+  }
+}
+
+// --- rendering -----------------------------------------------------------
+function renderGraph(g){
+  graph = g;
+  if (cy){ cy.destroy(); cy = null; }
+  initCy(g);
+  buildEndpointSelect();
+  applyFilters();
+  cy.fit(null, 40);
+  updateFooter(g);
 }
 
 function buildElements(g){
   const els = [];
-  for (const n of g.nodes){
-    els.push({ data: { id: n.id, label: n.label, ...n } });
-  }
-  for (const e of g.edges){
-    els.push({ data: { id: e.source+'|'+e.target+'|'+e.label, source: e.source, target: e.target, label: e.label } });
-  }
+  for (const n of g.nodes) els.push({ data: { id: n.id, label: n.label, ...n } });
+  for (const e of g.edges) els.push({ data: { id: e.source+'|'+e.target+'|'+e.label, source: e.source, target: e.target, label: e.label } });
   return els;
 }
 
@@ -158,24 +202,19 @@ function initCy(g){
         'curve-style': 'bezier', 'label': 'data(label)', 'font-size': 9, 'color': '#93a1c0',
         'text-background-color': '#0f1420', 'text-background-opacity': 0.85, 'text-background-padding': 2
       }},
-      { selector: '.dimmed', style: { 'opacity': 0.08 }},
       { selector: 'node:selected', style: { 'border-width': 4, 'border-color': '#fbbf24' }}
     ],
     layout: { name: 'dagre', rankDir: 'LR', nodeSep: 30, rankSep: 70, edgeSep: 12 }
   });
-
   cy.on('tap', 'node', evt => showDetail(evt.target.data()));
   cy.on('tap', evt => { if (evt.target === cy) clearDetail(); });
 }
 
-function relayout(){
-  cy.layout({ name: 'dagre', rankDir: 'LR', nodeSep: 30, rankSep: 70, edgeSep: 12 }).run();
-}
+function relayout(){ cy.layout({ name: 'dagre', rankDir: 'LR', nodeSep: 30, rankSep: 70, edgeSep: 12 }).run(); }
 
-// --- endpoint filter: show only nodes reachable from the chosen endpoint ---
+// --- filtering -----------------------------------------------------------
 function reachableFrom(id){
-  const seen = new Set([id]); const stack = [id];
-  const adj = {};
+  const seen = new Set([id]); const stack = [id]; const adj = {};
   for (const e of graph.edges){ (adj[e.source] ||= []).push(e.target); }
   while (stack.length){
     const cur = stack.pop();
@@ -183,16 +222,15 @@ function reachableFrom(id){
   }
   return seen;
 }
-
 function applyFilters(){
+  if (!cy) return;
   const ep = document.getElementById('endpointSelect').value;
   const reach = ep === '__all__' ? null : reachableFrom(ep);
   cy.batch(() => {
     cy.nodes().forEach(n => {
       const d = n.data();
-      const layerOk = activeLayers.has(d.layer || 'other');
-      const reachOk = !reach || reach.has(d.id);
-      n.style('display', (layerOk && reachOk) ? 'element' : 'none');
+      const ok = activeLayers.has(d.layer || 'other') && (!reach || reach.has(d.id));
+      n.style('display', ok ? 'element' : 'none');
     });
     cy.edges().forEach(e => {
       const vis = e.source().style('display') !== 'none' && e.target().style('display') !== 'none';
@@ -202,54 +240,42 @@ function applyFilters(){
   relayout();
 }
 
-// --- side panel ---
+// --- side panel ----------------------------------------------------------
 function showDetail(n){
-  const p = document.getElementById('panel');
-  const parts = [];
-  parts.push(`<h2>${esc(n.label)}</h2>`);
-  parts.push(`<div>`);
-  parts.push(`<span class="badge">${esc(n.type)}</span>`);
+  const parts = [`<h2>${esc(n.label)}</h2>`, `<div><span class="badge">${esc(n.type)}</span>`];
   if (n.layer) parts.push(`<span class="badge">${esc(n.layer)}</span>`);
   parts.push(`</div>`);
-
   const meta = [];
   if (n.http) meta.push(`<span class="http">${esc(n.http)}</span>`);
   if (n.type === 'db') meta.push(`<span class="op" style="color:${nodeColor(n)}">${esc(n.op)}</span> → <b>${esc(n.table)}</b>`);
   if (n.file) meta.push(`${esc(n.file)}${n.line ? ':'+n.line : ''}`);
   if (meta.length) parts.push(`<div class="meta">${meta.join(' &nbsp;·&nbsp; ')}</div>`);
-
-  if (n.conditions && n.conditions.length){
+  if (n.conditions && n.conditions.length)
     parts.push(section('Branch conditions', n.conditions.map(c => `<li class="cond">${esc(c)}</li>`).join('')));
-  }
-  if (n.mutations && n.mutations.length){
+  if (n.mutations && n.mutations.length)
     parts.push(section('Mutations', n.mutations.map(m => `<li class="mut">${esc(m)}</li>`).join('')));
-  }
-  if (n.source){
+  if (n.source)
     parts.push(`<section class="detail"><div class="title">Source</div><pre class="source">${esc(n.source)}</pre></section>`);
-  }
-  if (n.type === 'db'){
-    parts.push(`<p class="hint">This is a persistence sink resolved statically from the call above.</p>`);
-  }
-  p.innerHTML = parts.join('');
+  if (n.type === 'db')
+    parts.push(`<p class="hint">Persistence sink resolved statically from the call above.</p>`);
+  document.getElementById('panel').innerHTML = parts.join('');
 }
-function section(title, inner){
-  return `<section class="detail"><div class="title">${esc(title)}</div><ul class="list">${inner}</ul></section>`;
-}
+function section(title, inner){ return `<section class="detail"><div class="title">${esc(title)}</div><ul class="list">${inner}</ul></section>`; }
 function clearDetail(){
   document.getElementById('panel').innerHTML =
     '<div class="empty">Click a node to see its request data, conditions, mutations, and source.</div>';
 }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-// --- controls ---
+// --- controls ------------------------------------------------------------
 function buildEndpointSelect(){
   const sel = document.getElementById('endpointSelect');
+  sel.innerHTML = '<option value="__all__">All endpoints</option>';
   graph.nodes.filter(n => n.type === 'endpoint').forEach(n => {
     const o = document.createElement('option');
     o.value = n.id; o.textContent = (n.http || n.label);
     sel.appendChild(o);
   });
-  sel.addEventListener('change', applyFilters);
 }
 function buildLayerFilters(){
   const wrap = document.getElementById('layerFilters');
@@ -265,23 +291,34 @@ function buildLayerFilters(){
       wrap.appendChild(l);
     });
 }
+function updateFooter(g){
+  const eps = g.nodes.filter(n => n.type==='endpoint').length;
+  const dbs = g.nodes.filter(n => n.type==='db').length;
+  document.getElementById('stat').textContent =
+    `${g.nodes.length} nodes · ${eps} endpoints · ${dbs} db sinks · ${g.edges.length} edges · ${g.generatedBy||''}`;
+}
+function setStatus(t){ document.getElementById('stat').textContent = t; }
 
+function wireControls(){
+  document.getElementById('openFolderBtn').onclick = () => document.getElementById('folderInput').click();
+  document.getElementById('folderInput').onchange = e => indexFolder(e.target.files);
+  document.getElementById('indexPathBtn').onclick = () => indexPath(document.getElementById('pathInput').value);
+  document.getElementById('pathInput').addEventListener('keydown', e => { if (e.key === 'Enter') indexPath(e.target.value); });
+  document.getElementById('endpointSelect').onchange = applyFilters;
+  document.getElementById('fitBtn').onclick = () => cy && cy.fit(null, 40);
+}
+
+// --- boot ----------------------------------------------------------------
 (async function main(){
-  try {
-    cytoscape.use(cytoscapeDagre);
-    graph = await loadGraph();
-    initCy(graph);
-    buildEndpointSelect();
-    buildLayerFilters();
-    document.getElementById('fitBtn').addEventListener('click', () => cy.fit(null, 40));
-    const eps = graph.nodes.filter(n => n.type==='endpoint').length;
-    const dbs = graph.nodes.filter(n => n.type==='db').length;
-    document.getElementById('stat').textContent =
-      `${graph.nodes.length} nodes · ${eps} endpoints · ${dbs} db sinks · ${graph.edges.length} edges · ${graph.generatedBy||''}`;
-    cy.fit(null, 40);
-  } catch(e){
-    document.getElementById('stat').textContent = e.message;
-    document.getElementById('panel').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  cytoscape.use(cytoscapeDagre);
+  buildLayerFilters();
+  wireControls();
+  const g = await loadStaticGraph();
+  if (g){
+    renderGraph(g);
+    setStatus('Loaded sample graph. Open a project folder (or paste a path) to index your own code.');
+  } else {
+    setStatus('Open a project folder, or paste a path and Index. (Server started with --serve.)');
   }
 })();
 </script>
