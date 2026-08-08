@@ -91,7 +91,9 @@
     <select id="endpointSelect"><option value="__all__">All endpoints</option></select>
   </label>
   <div class="layers" id="layerFilters"></div>
-  <button id="fitBtn">Fit</button>
+  <button id="dirBtn" title="Toggle layout direction (left→right / top→bottom)">Dir: →</button>
+  <button id="tidyBtn" title="Re-arrange the visible flow into a clean layout">Tidy</button>
+  <button id="fitBtn" title="Fit the graph to the screen">Fit</button>
 </header>
 
 <main>
@@ -117,7 +119,13 @@ function nodeColor(n){ return n.type === 'db' ? (OP_COLOR[n.op] || getVar('--db-
 function nodeShape(n){ return n.type === 'db' ? 'barrel' : 'round-rectangle'; }
 
 let graph = null, cy = null;
+let layoutDir = 'LR';   // 'LR' = left→right, 'TB' = top→bottom
 const activeLayers = new Set(['controller','service','repository','db','other']);
+
+function layoutOpts(){
+  return { name: 'dagre', rankDir: layoutDir, nodeSep: 28, rankSep: 90, edgeSep: 12,
+           nodeDimensionsIncludeLabels: true, animate: false, fit: true, padding: 50 };
+}
 
 // --- data loading --------------------------------------------------------
 async function loadStaticGraph(){
@@ -211,13 +219,19 @@ function initCy(g){
       }},
       { selector: 'node:selected', style: { 'border-width': 4, 'border-color': '#fbbf24' }}
     ],
-    layout: { name: 'dagre', rankDir: 'LR', nodeSep: 30, rankSep: 70, edgeSep: 12 }
+    layout: layoutOpts()
   });
   cy.on('tap', 'node', evt => showDetail(evt.target.data()));
   cy.on('tap', evt => { if (evt.target === cy) clearDetail(); });
 }
 
-function relayout(){ cy.layout({ name: 'dagre', rankDir: 'LR', nodeSep: 30, rankSep: 70, edgeSep: 12 }).run(); }
+// Lay out ONLY the currently-visible nodes so a selected endpoint packs into a
+// clean flow, instead of keeping its scattered positions from the full graph.
+function relayout(){
+  if (!cy) return;
+  const vis = cy.elements(':visible');
+  (vis.length ? vis : cy.elements()).layout(layoutOpts()).run();
+}
 
 // --- filtering -----------------------------------------------------------
 function reachableFrom(id){
@@ -312,6 +326,12 @@ function wireControls(){
   document.getElementById('pathInput').addEventListener('keydown', e => { if (e.key === 'Enter') indexPath(e.target.value); });
   document.getElementById('endpointSelect').onchange = applyFilters;
   document.getElementById('fitBtn').onclick = () => cy && cy.fit(null, 40);
+  document.getElementById('tidyBtn').onclick = relayout;
+  document.getElementById('dirBtn').onclick = () => {
+    layoutDir = layoutDir === 'LR' ? 'TB' : 'LR';
+    document.getElementById('dirBtn').textContent = 'Dir: ' + (layoutDir === 'LR' ? '→' : '↓');
+    relayout();
+  };
 }
 
 // --- boot ----------------------------------------------------------------
