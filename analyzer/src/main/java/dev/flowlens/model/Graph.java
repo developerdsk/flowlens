@@ -8,6 +8,7 @@ import java.util.Map;
 /** The whole data-flow graph. Serialized to graph.json for the viewer. */
 public class Graph {
     public String generatedBy = "FlowLens 0.1.0";
+    public String sourcePath;   // the folder that was indexed (set by the server)
     public List<Node> nodes = new ArrayList<>();
     public List<Edge> edges = new ArrayList<>();
 

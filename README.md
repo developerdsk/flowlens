@@ -58,10 +58,10 @@ run.bat
 This builds the analyzer (first run only) and starts the viewer at
 **http://localhost:7070**. Then, in the browser:
 
-- Click **📁 Open project** and pick any Java/Spring folder — the browser reads its
-  `.java` files and indexes them. Nothing is uploaded to the internet; the analyzer
-  runs locally on your machine.
-- …or paste a **project path** on that machine and click **Index path**.
+- Click **📁 Open project** — a native folder chooser opens **on your machine**. Pick
+  any Java/Spring folder and the analyzer reads it **directly from disk**. Nothing is
+  uploaded anywhere; everything runs locally.
+- …or paste a **project path** and click **Index path** (same thing, without the dialog).
 
 That's the whole workflow — pick a folder, see the flow. To hand it to a teammate,
 give them the built `analyzer/target/flowlens-analyzer.jar` and have them run
@@ -84,7 +84,7 @@ from disk on the machine running the server, so never expose it to a network.
 
 Early MVP. Working today:
 
-- **Point-and-index UI**: pick a local folder or paste a path — no CLI needed
+- **Point-and-index UI**: native folder chooser or a path box — reads from disk, no upload, no CLI needed
 - Single-jar local server (`--serve`), viewer bundled inside; works on Windows & macOS
 - Spring MVC endpoint detection (`@GetMapping`/`@PostMapping`/`@RequestMapping`, etc.)
 - Inter-procedural call-chain walk across project classes (cycle-guarded)
