@@ -82,8 +82,7 @@
   </div>
 
   <div class="divider"></div>
-  <button id="openFolderBtn" class="primary" title="Pick a Java/Spring project folder to index">📁 Open project</button>
-  <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none">
+  <button id="openFolderBtn" class="primary" title="Open a native folder chooser on this machine — reads files from disk, nothing is uploaded">📁 Open project</button>
   <input type="text" id="pathInput" placeholder="…or paste a project path" spellcheck="false">
   <button id="indexPathBtn">Index path</button>
 
@@ -128,16 +127,17 @@ async function loadStaticGraph(){
   return null;
 }
 
-async function indexFolder(fileList){
-  const javaFiles = [...fileList].filter(f => f.name.endsWith('.java'));
-  if (!javaFiles.length){ setStatus('No .java files found in that folder.'); return; }
-  setStatus(`Reading ${javaFiles.length} .java files…`);
-  const files = [];
-  for (const f of javaFiles){
-    files.push({ path: f.webkitRelativePath || f.name, content: await f.text() });
+async function pickFolder(){
+  setStatus('Opening a folder chooser on this machine…');
+  try {
+    const r = await fetch('/api/pick', { method: 'POST' });
+    const data = await r.json();
+    if (!r.ok){ setStatus('Error: ' + (data.error || r.status)); return; }
+    if (data.cancelled){ setStatus('Folder selection cancelled.'); return; }
+    onGraph(data);
+  } catch(e){
+    setStatus('Cannot reach the FlowLens server. Start it with:  java -jar flowlens-analyzer.jar --serve');
   }
-  setStatus(`Indexing ${files.length} files…`);
-  await postAnalyze({ files });
 }
 
 async function indexPath(path){
@@ -153,13 +153,20 @@ async function postAnalyze(payload){
     });
     const data = await r.json();
     if (!r.ok){ setStatus('Error: ' + (data.error || r.status)); return; }
-    if (!data.nodes || !data.nodes.length){ setStatus('No Spring endpoints found in that project.'); }
-    renderGraph(data);
-    const eps = data.nodes.filter(n => n.type==='endpoint').length;
-    setStatus(`Indexed ${data.nodes.length} nodes · ${eps} endpoints · ${data.edges.length} edges.`);
+    onGraph(data);
   } catch(e){
     setStatus('Cannot reach the FlowLens server. Start it with:  java -jar flowlens-analyzer.jar --serve');
   }
+}
+
+// Shared handler for any analyze/pick response.
+function onGraph(data){
+  if (data.sourcePath) document.getElementById('pathInput').value = data.sourcePath;
+  if (!data.nodes || !data.nodes.length){ setStatus('No Spring endpoints found in that project.'); }
+  renderGraph(data);
+  const eps = data.nodes.filter(n => n.type==='endpoint').length;
+  const where = data.sourcePath ? ` (${data.sourcePath})` : '';
+  setStatus(`Indexed ${data.nodes.length} nodes · ${eps} endpoints · ${data.edges.length} edges${where}.`);
 }
 
 // --- rendering -----------------------------------------------------------
@@ -300,8 +307,7 @@ function updateFooter(g){
 function setStatus(t){ document.getElementById('stat').textContent = t; }
 
 function wireControls(){
-  document.getElementById('openFolderBtn').onclick = () => document.getElementById('folderInput').click();
-  document.getElementById('folderInput').onchange = e => indexFolder(e.target.files);
+  document.getElementById('openFolderBtn').onclick = pickFolder;
   document.getElementById('indexPathBtn').onclick = () => indexPath(document.getElementById('pathInput').value);
   document.getElementById('pathInput').addEventListener('keydown', e => { if (e.key === 'Enter') indexPath(e.target.value); });
   document.getElementById('endpointSelect').onchange = applyFilters;

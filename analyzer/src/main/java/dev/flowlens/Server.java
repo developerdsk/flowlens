@@ -41,6 +41,7 @@ public class Server {
     public void start() throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
         server.createContext("/api/analyze", this::handleAnalyze);
+        server.createContext("/api/pick", this::handlePick);
         server.createContext("/", this::handleStatic);
         server.setExecutor(Executors.newFixedThreadPool(4));
         server.start();
@@ -63,6 +64,54 @@ public class Server {
             byte[] body = in.readAllBytes();
             send(ex, 200, contentType(path), body);
         }
+    }
+
+    // --- native folder picker (opens on the machine running the server) ------
+
+    private void handlePick(HttpExchange ex) throws IOException {
+        try {
+            if (java.awt.GraphicsEnvironment.isHeadless()) {
+                sendError(ex, 400, "No desktop available to open a folder chooser — paste a path instead.");
+                return;
+            }
+            String chosen = chooseDirectory();
+            if (chosen == null) {
+                send(ex, 200, "application/json; charset=utf-8", "{\"cancelled\":true}".getBytes());
+                return;
+            }
+            Graph graph = new FlowAnalyzer().analyze(Path.of(chosen));
+            graph.sourcePath = chosen;
+            System.out.printf("Picked %s -> %d nodes, %d edges%n", chosen, graph.nodes.size(), graph.edges.size());
+            send(ex, 200, "application/json; charset=utf-8", Json.MAPPER.writeValueAsBytes(graph));
+        } catch (Exception e) {
+            sendError(ex, 500, "Folder pick failed: " + e.getMessage());
+        }
+    }
+
+    /** Show a native directories-only chooser on the server host; return the absolute path or null. */
+    private static String chooseDirectory() throws Exception {
+        final String[] result = new String[1];
+        Runnable task = () -> {
+            javax.swing.JFrame parent = new javax.swing.JFrame();
+            parent.setAlwaysOnTop(true);
+            parent.setUndecorated(true);
+            parent.setType(java.awt.Window.Type.UTILITY);
+            parent.setLocationRelativeTo(null);
+            parent.setVisible(true);
+            parent.toFront();
+
+            javax.swing.JFileChooser fc = new javax.swing.JFileChooser();
+            fc.setDialogTitle("Select a Java / Spring project folder");
+            fc.setFileSelectionMode(javax.swing.JFileChooser.DIRECTORIES_ONLY);
+            int res = fc.showDialog(parent, "Index this folder");
+            parent.dispose();
+            if (res == javax.swing.JFileChooser.APPROVE_OPTION && fc.getSelectedFile() != null) {
+                result[0] = fc.getSelectedFile().getAbsolutePath();
+            }
+        };
+        if (javax.swing.SwingUtilities.isEventDispatchThread()) task.run();
+        else javax.swing.SwingUtilities.invokeAndWait(task);
+        return result[0];
     }
 
     // --- analysis endpoint ---------------------------------------------------
