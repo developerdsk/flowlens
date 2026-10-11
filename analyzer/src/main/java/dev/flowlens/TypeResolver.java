@@ -335,7 +335,7 @@ public class TypeResolver {
             Optional<ProjectModel.FieldMatch> fm = model.findField(scope.project, name);
             if (fm.isPresent()) return fieldType(fm.get(), depth);
             // nested type access: Outer.Inner
-            TypeInfo nested = model.byQualifiedName.get(scope.project.qualifiedName + "." + name);
+            TypeInfo nested = model.qualified(scope.project.qualifiedName + "." + name, scope.project);
             if (nested != null) {
                 RType r = ofTypeInfo(nested);
                 r.isStatic = true;

@@ -7,22 +7,26 @@ mod state;
 #[cfg(feature = "updater")]
 mod updater;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tauri::{Emitter, Manager};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 
 use crate::engine::Engine;
-use crate::state::PendingOpen;
+use crate::state::{AllowedFiles, PendingOpen};
 
-/// Folders and .flowlens files among command-line arguments.
-fn openable(args: impl IntoIterator<Item = String>) -> Vec<String> {
+/// Folders and .flowlens files among command-line arguments, as absolute paths
+/// (relative ones are resolved against the launching process's working directory).
+fn openable(args: impl IntoIterator<Item = String>, cwd: &Path) -> Vec<String> {
     args.into_iter()
         .filter(|a| !a.starts_with('-'))
-        .filter(|a| {
-            let p = Path::new(a);
-            p.is_dir() || p.extension().map(|e| e == "flowlens").unwrap_or(false) && p.is_file()
+        .map(|a| {
+            let p = PathBuf::from(&a);
+            let abs = if p.is_absolute() { p } else { cwd.join(p) };
+            abs.canonicalize().unwrap_or(abs)
         })
+        .filter(|p| p.is_dir() || p.extension().map(|e| e == "flowlens").unwrap_or(false) && p.is_file())
+        .map(|p| p.to_string_lossy().into_owned())
         .collect()
 }
 
@@ -34,6 +38,9 @@ fn deliver(app: &tauri::AppHandle, paths: Vec<String>) {
         let _ = w.unminimize();
         let _ = w.set_focus();
     }
+    for p in &paths {
+        app.state::<AllowedFiles>().allow(Path::new(p));
+    }
     app.state::<PendingOpen>().0.lock().unwrap().extend(paths.clone());
     // if the UI is up it handles the event and drains the queue
     let _ = app.emit("open-paths", paths);
@@ -43,8 +50,8 @@ fn deliver(app: &tauri::AppHandle, paths: Vec<String>) {
 pub fn run() {
     let builder = tauri::Builder::default()
         // must be first: a second launch (e.g. double-clicking a .flowlens file) focuses this one
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            let paths = openable(argv.into_iter().skip(1));
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            let paths = openable(argv.into_iter().skip(1), Path::new(&cwd));
             deliver(app, paths);
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.set_focus();
@@ -68,6 +75,7 @@ pub fn run() {
     let app = builder
         .manage(Engine::default())
         .manage(PendingOpen::default())
+        .manage(AllowedFiles::default())
         .setup(|app| {
             let handle = app.handle().clone();
             let recent = state::recent_projects(&handle);
@@ -82,7 +90,24 @@ pub fn run() {
                 }
             });
 
-            app.state::<PendingOpen>().0.lock().unwrap().extend(openable(std::env::args().skip(1)));
+            let cwd = std::env::current_dir().unwrap_or_default();
+            let initial = openable(std::env::args().skip(1), &cwd);
+            for p in &initial {
+                app.state::<AllowedFiles>().allow(Path::new(p));
+            }
+            app.state::<PendingOpen>().0.lock().unwrap().extend(initial);
+
+            // files dropped on the window may be read by the UI
+            if let Some(w) = app.get_webview_window("main") {
+                let h = handle.clone();
+                w.on_window_event(move |event| {
+                    if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                        for p in paths {
+                            h.state::<AllowedFiles>().allow(p);
+                        }
+                    }
+                });
+            }
 
             // start the engine in the background so the first index is fast
             let h = handle.clone();

@@ -12,7 +12,7 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::engine::{self, Engine};
-use crate::state::{self, PendingOpen};
+use crate::state::{self, AllowedFiles, PendingOpen};
 
 #[derive(Serialize)]
 pub struct EngineResponse {
@@ -34,11 +34,12 @@ pub async fn engine_request(app: AppHandle, method: String, path: String, body: 
             let (port, token) = engine.endpoint(&app)?;
             match call(port, &token, &method, &path, body.as_deref()) {
                 Ok(r) => return Ok(r),
-                // engine went away between calls: restart once and retry
+                // transport error: retry once; endpoint() restarts the engine only if it really died,
+                // so a transient glitch never kills a healthy engine (and its running jobs)
                 Err(e) if attempt == 0 && matches!(*e, ureq::Error::Transport(_)) => {
-                    log::warn!("engine request failed ({e}); restarting engine");
+                    log::warn!("engine request failed ({e}); engine running: {}", engine.is_running());
                     attempt += 1;
-                    engine.restart(&app)?;
+                    std::thread::sleep(Duration::from_millis(200));
                 }
                 Err(e) => return Err(format!("engine request failed: {e}")),
             }
@@ -142,6 +143,7 @@ pub async fn open_snapshot(app: AppHandle) -> Result<Option<OpenedFile>, String>
             return Ok(None);
         };
         let text = read_limited(&path)?;
+        app.state::<AllowedFiles>().allow(&path);
         Ok(Some(OpenedFile {
             name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
             path: path.to_string_lossy().into_owned(),
@@ -161,13 +163,17 @@ fn read_limited(path: &PathBuf) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| format!("Could not read {}: {e}", path.display()))
 }
 
-/// Read a snapshot the user dropped on the window / opened via the OS. Only .flowlens/.json.
+/// Read a snapshot the user dropped on the window or opened via the OS. Only files the user
+/// handed to the app this way (recorded by the shell, not claimed by the UI) and only .flowlens/.json.
 #[tauri::command]
-pub fn read_text_file(path: String) -> Result<String, String> {
+pub fn read_text_file(path: String, allowed: State<'_, AllowedFiles>) -> Result<String, String> {
     let p = PathBuf::from(&path);
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
     if ext != "flowlens" && ext != "json" {
         return Err("Only .flowlens and .json files can be opened".into());
+    }
+    if !allowed.contains(&p) {
+        return Err("This file was not opened or dropped by the user".into());
     }
     read_limited(&p)
 }

@@ -35,7 +35,6 @@ public class EntryPoints {
         public TypeInfo owner;
         public MethodDeclaration method;  // handler method (null for lambda handlers)
         public Node body;                 // method or lambda to walk
-        public int requestBodyParam = -1;
 
         public String http() {
             return verb + " " + path;
@@ -60,8 +59,8 @@ public class EntryPoints {
 
     public List<Entry> find() {
         List<Entry> out = new ArrayList<>();
-        List<TypeInfo> all = new ArrayList<>(model.byQualifiedName.values());
-        all.sort((a, b) -> a.qualifiedName.compareTo(b.qualifiedName));
+        List<TypeInfo> all = new ArrayList<>(model.allTypes);
+        all.sort((a, b) -> a.key.compareTo(b.key));
         for (TypeInfo t : all) {
             if (ProjectModel.CONTROLLER.equals(t.layer) && t.isConcrete()) {
                 if (model.isMicronaut(t)) micronaut(t, out);
@@ -100,7 +99,6 @@ public class EntryPoints {
             if (paths.isEmpty()) paths = List.of("");
             for (String cp : classPaths) for (String p : paths) for (String v : verbs) {
                 Entry e = base(controller, h.impl, "http", "spring", v, joinPath(cp, p));
-                e.requestBodyParam = requestBodyIndex(h.impl, Set.of("RequestBody"));
                 out.add(e);
             }
         }
@@ -136,7 +134,6 @@ public class EntryPoints {
                     .flatMap(a -> Annotations.firstString(a, model, h.declaringType, "value")).orElse("");
             for (String cp : classPaths) {
                 Entry e = base(resource, h.impl, "http", "jaxrs", verb, joinPath(cp, methodPath));
-                e.requestBodyParam = unannotatedParam(h.impl);
                 out.add(e);
             }
         }
@@ -153,7 +150,6 @@ public class EntryPoints {
             if (paths.isEmpty()) paths = List.of("");
             for (String cp : classPaths) for (String p : paths) {
                 Entry e = base(controller, h.impl, "http", "micronaut", verb, joinPath(cp, p));
-                e.requestBodyParam = requestBodyIndex(h.impl, Set.of("Body"));
                 out.add(e);
             }
         }
@@ -189,8 +185,15 @@ public class EntryPoints {
                 if (mapping.isEmpty()) {
                     for (TypeInfo sup : hierarchy) {
                         if (sup == t) continue;
-                        for (MethodDeclaration sm : sup.methodsByName.getOrDefault(m.getNameAsString(), List.of())) {
-                            if (sm.getParameters().size() == m.getParameters().size()) {
+                        // the overridden declaration: same signature; arity only when that is unambiguous
+                        List<MethodDeclaration> named = sup.methodsByName.getOrDefault(m.getNameAsString(), List.of());
+                        List<MethodDeclaration> candidates = named.stream().filter(x -> ProjectModel.signature(x).equals(sig)).toList();
+                        if (candidates.isEmpty()) {
+                            List<MethodDeclaration> sameArity = named.stream().filter(x -> x.getParameters().size() == m.getParameters().size()).toList();
+                            if (sameArity.size() == 1) candidates = sameArity;
+                        }
+                        for (MethodDeclaration sm : candidates) {
+                            {
                                 Optional<AnnotationExpr> ma = finder.find(sm);
                                 if (ma.isPresent()) {
                                     mapping = ma;
@@ -220,21 +223,6 @@ public class EntryPoints {
             }
         }
         return List.of("");
-    }
-
-    private static int requestBodyIndex(MethodDeclaration m, Set<String> annos) {
-        for (int i = 0; i < m.getParameters().size(); i++) {
-            for (String a : annos) if (Annotations.get(m.getParameter(i), a).isPresent()) return i;
-        }
-        return -1;
-    }
-
-    /** JAX-RS entity parameter: the one without @PathParam/@QueryParam/@Context/... */
-    private static int unannotatedParam(MethodDeclaration m) {
-        for (int i = 0; i < m.getParameters().size(); i++) {
-            if (m.getParameter(i).getAnnotations().isEmpty()) return i;
-        }
-        return -1;
     }
 
     // ------------------------------------------------------------------------------------------
@@ -307,7 +295,6 @@ public class EntryPoints {
         }
         String dest = dests.isEmpty() ? "?" : String.join(",", dests);
         Entry e = base(t, m, "message", broker.toLowerCase(Locale.ROOT), broker, dest);
-        e.requestBodyParam = m.getParameters().isEmpty() ? -1 : 0;
         out.add(e);
     }
 
@@ -362,7 +349,7 @@ public class EntryPoints {
             e.verb = verb;
             e.path = full;
             e.owner = t;
-            e.id = "EP:" + t.qualifiedName + "#route:" + verb + " " + full;
+            e.id = "EP:" + t.key + "#route:" + verb + " " + full;
             if (handler instanceof MethodReferenceExpr mr) {
                 MethodTarget target = methodRefTarget(mr);
                 if (target != null) {
@@ -448,7 +435,7 @@ public class EntryPoints {
         e.method = m;
         e.body = m;
         e.label = owner.simpleName + "." + m.getNameAsString() + "()";
-        e.id = "EP:" + owner.qualifiedName + "#" + ProjectModel.signature(m);
+        e.id = "EP:" + owner.key + "#" + ProjectModel.signature(m);
         if (!"http".equals(kind) || !"ANY".equals(verb)) e.id += "@" + verb + " " + path;
         return e;
     }

@@ -125,6 +125,17 @@ class ServerTest {
     }
 
     @Test
+    void invalidGitRefsAreRejected() throws Exception {
+        int port = start(null);
+        for (String ref : new String[]{"main..feature", "HEAD@{1 day ago}", "--output=x"}) {
+            String body = "{\"path\":" + Json.MAPPER.valueToTree(project().toString()) + ",\"ref\":" + Json.MAPPER.valueToTree(ref) + "}";
+            Response r = raw(port, "POST", "/api/analyze", "127.0.0.1:" + port, null, "application/json", null, body);
+            assertEquals(400, r.code(), ref);
+            assertEquals("Invalid git ref", r.json().get("error").asText());
+        }
+    }
+
+    @Test
     void jobsReportProgressAndResult_D11() throws Exception {
         int port = start(null);
         String host = "127.0.0.1:" + port;

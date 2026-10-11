@@ -126,7 +126,7 @@ export class FlowGraph {
     this.cy.on('tap', 'edge', evt => this.handlers.onEdge?.(evt.target.data()));
     this.cy.on('tap', evt => { if (evt.target === this.cy) this.handlers.onBackground?.(); });
     this.cy.on('dbltap', 'node', evt => this.toggleCollapse(evt.target.id()));
-    this.cy.on('viewport render', () => this.handlers.onViewport?.());
+    this.cy.on('viewport', () => this.handlers.onViewport?.());
     if (!this.resizeObserver) {
       // keep Cytoscape's idea of its container size in sync (sidebars, window resizes)
       this.resizeObserver = new ResizeObserver(() => this.cy && this.cy.resize());
@@ -360,6 +360,7 @@ export class FlowGraph {
       nodeDimensionsIncludeLabels: true, animate: false, fit: false,
     }).run();
     this.fit();
+    this.handlers.onLayout?.();
   }
 
   /** Fit the visible elements, but never zoom in so far that a small flow looks oversized. */

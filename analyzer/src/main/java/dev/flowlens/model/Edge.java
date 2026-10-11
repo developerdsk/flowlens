@@ -21,6 +21,7 @@ public class Edge {
     }
 
     public String key() {
-        return source + "->" + target + ":" + label;
+        // empty labels are omitted in JSON, so a graph read back has null where the live one had ""
+        return source + "->" + target + ":" + (label == null ? "" : label);
     }
 }

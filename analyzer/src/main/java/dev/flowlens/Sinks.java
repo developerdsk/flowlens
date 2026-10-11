@@ -49,6 +49,12 @@ public class Sinks {
     private static final Set<String> REST_TEMPLATE = Set.of("RestTemplate", "RestOperations", "TestRestTemplate", "OAuth2RestTemplate");
     private static final Set<String> FLUENT_HTTP = Set.of("WebClient", "RestClient", "Builder");
     private static final Set<String> HTTP_VERBS = Set.of("get", "post", "put", "delete", "patch", "head", "options");
+    /** Method annotations of declarative HTTP clients -> verb. */
+    private static final Map<String, String> CLIENT_VERBS = Map.ofEntries(Map.entry("GetMapping", "GET"), Map.entry("PostMapping", "POST"),
+            Map.entry("PutMapping", "PUT"), Map.entry("DeleteMapping", "DELETE"), Map.entry("PatchMapping", "PATCH"),
+            Map.entry("GetExchange", "GET"), Map.entry("PostExchange", "POST"), Map.entry("PutExchange", "PUT"),
+            Map.entry("DeleteExchange", "DELETE"), Map.entry("PatchExchange", "PATCH"),
+            Map.entry("GET", "GET"), Map.entry("POST", "POST"), Map.entry("PUT", "PUT"), Map.entry("DELETE", "DELETE"));
 
     private final ProjectModel model;
     private final TypeResolver types;
@@ -134,18 +140,13 @@ public class Sinks {
         if (m != null) {
             for (AnnotationExpr a : m.getAnnotations()) {
                 String an = Annotations.name(a);
-                Map<String, String> verbs = Map.ofEntries(Map.entry("GetMapping", "GET"), Map.entry("PostMapping", "POST"),
-                        Map.entry("PutMapping", "PUT"), Map.entry("DeleteMapping", "DELETE"), Map.entry("PatchMapping", "PATCH"),
-                        Map.entry("GetExchange", "GET"), Map.entry("PostExchange", "POST"), Map.entry("PutExchange", "PUT"),
-                        Map.entry("DeleteExchange", "DELETE"), Map.entry("PatchExchange", "PATCH"),
-                        Map.entry("GET", "GET"), Map.entry("POST", "POST"), Map.entry("PUT", "PUT"), Map.entry("DELETE", "DELETE"));
-                if (verbs.containsKey(an)) {
-                    verb = verbs.get(an);
+                if (CLIENT_VERBS.containsKey(an)) {
+                    verb = CLIENT_VERBS.get(an);
                     path = Annotations.firstString(a, model, client, "value", "path", "url").orElse(path);
                 } else if (an.equals("RequestMapping") || an.equals("HttpExchange")) {
                     List<String> v = Annotations.enumValues(a, "method");
-                    if (!v.isEmpty()) verb = v.get(0);
-                    else Annotations.firstString(a, model, client, "method").ifPresent(x -> {});
+                    if (v.isEmpty()) v = Annotations.stringValues(a, model, client, "method"); // @HttpExchange(method = "GET")
+                    if (!v.isEmpty()) verb = v.get(0).toUpperCase(Locale.ROOT);
                     path = Annotations.firstString(a, model, client, "value", "path", "url").orElse(path);
                 } else if (an.equals("RequestLine")) { // Feign core: @RequestLine("GET /users/{id}")
                     String line = Annotations.firstString(a, model, client, "value").orElse("GET /");
@@ -203,7 +204,7 @@ public class Sinks {
     private Hit jdbc(MethodCallExpr call, String fn) {
         if (call.getArguments().isEmpty()) return null;
         if (!(fn.startsWith("query") || fn.startsWith("update") || fn.startsWith("batchUpdate") || fn.startsWith("execute")
-                || fn.equals("execute") || fn.startsWith("call"))) return null;
+                || fn.startsWith("call"))) return null;
         String sql = firstString(call);
         SinkClassifier.Sink s = SinkClassifier.parseQuery(sql, model);
         String op = s != null ? s.op() : fn.startsWith("query") ? "SELECT" : "UPDATE";
@@ -359,8 +360,8 @@ public class Sinks {
                     dest = (s.isEmpty() ? "?" : s.get(0)) + "/" + (rk.isEmpty() ? "?" : rk.get(0));
                 } else if (!s.isEmpty()) {
                     dest = s.get(0);
-                } else if (c.getArguments().size() == 1) {
-                    dest = "default";
+                } else if (c.getArguments().size() == 1 && ("rabbit".equals(tech) || "jms".equals(tech))) {
+                    dest = "default"; // convertAndSend(message): the template's default destination
                 }
             }
             return new Hit("external", "SEND", dest, tech, null, tech + "." + fn + "()", "?".equals(dest) ? "low" : "high");

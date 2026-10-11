@@ -60,13 +60,13 @@ public final class GraphDiff {
             if (ep.diff != null) continue;
             for (String id : q.reachableFrom(ep.id)) {
                 Node n = out.get(id);
-                if (n != null && n.diff != null) { ep.diff = "affected"; break; }
-            }
-            if (ep.diff == null) {
-                for (String id : q.reachableFrom(ep.id)) {
-                    for (Edge e : q.outgoing(id)) if (e.diff != null) { ep.diff = "affected"; break; }
-                    if (ep.diff != null) break;
+                boolean changed = n != null && n.diff != null;
+                if (!changed) {
+                    for (Edge e : q.outgoing(id)) {
+                        if (e.diff != null) { changed = true; break; }
+                    }
                 }
+                if (changed) { ep.diff = "affected"; break; }
             }
         }
         return out;

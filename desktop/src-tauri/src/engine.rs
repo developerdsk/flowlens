@@ -10,7 +10,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -32,6 +32,8 @@ pub struct Running {
 pub struct Engine {
     running: Mutex<Option<Running>>,
     quitting: AtomicBool,
+    /** Bumped for every start and every deliberate stop; a watcher only reacts to its own generation. */
+    generation: AtomicU64,
     restarts: Mutex<Vec<Instant>>,
     last_error: Mutex<Option<String>>,
 }
@@ -73,6 +75,8 @@ impl Engine {
         let log_path = log_file(app);
         let mut cmd = Command::new(&files.java);
         cmd.arg("-Dfile.encoding=UTF-8")
+            .arg("-Dstdout.encoding=UTF-8")
+            .arg("-Dstderr.encoding=UTF-8")
             .arg("-Djava.awt.headless=true")
             .arg("-XX:+UseSerialGC")
             .arg("-Xss4m");
@@ -109,25 +113,18 @@ impl Engine {
         let out_log = log.clone();
         thread::spawn(move || {
             let mut sent = false;
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            for_each_line(stdout, |line| {
                 if !sent {
-                    if let Some(port) = parse_ready(&line) {
+                    if let Some(port) = parse_ready(line) {
                         let _ = tx.send(port);
                         sent = true;
                     }
                 }
-                write_log(&out_log, &line);
-            }
+                write_log(&out_log, line);
+            });
         });
         let err_log = log.clone();
-        thread::spawn(move || {
-            let mut r = BufReader::new(stderr);
-            let mut buf = String::new();
-            while r.read_line(&mut buf).map(|n| n > 0).unwrap_or(false) {
-                write_log(&err_log, buf.trim_end());
-                buf.clear();
-            }
-        });
+        thread::spawn(move || for_each_line(stderr, |line| write_log(&err_log, line)));
 
         let child = Arc::new(Mutex::new(child));
         let port = match rx.recv_timeout(READY_TIMEOUT) {
@@ -144,12 +141,13 @@ impl Engine {
         *self.last_error.lock().unwrap() = None;
         *guard = Some(Running { child: child.clone(), _stdin: stdin, port, token: token.clone() });
         drop(guard);
-        self.watch(app.clone(), child);
+        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        self.watch(app.clone(), child, generation);
         Ok((port, token))
     }
 
     /// Restart the engine if it exits while the app is running.
-    fn watch(&self, app: AppHandle, child: Arc<Mutex<Child>>) {
+    fn watch(&self, app: AppHandle, child: Arc<Mutex<Child>>, generation: u64) {
         thread::spawn(move || {
             let exit = loop {
                 thread::sleep(Duration::from_millis(500));
@@ -160,7 +158,8 @@ impl Engine {
                 }
             };
             let engine = app.state::<Engine>();
-            if engine.quitting.load(Ordering::SeqCst) {
+            // a deliberate stop/restart bumped the generation: not a crash
+            if engine.quitting.load(Ordering::SeqCst) || engine.generation.load(Ordering::SeqCst) != generation {
                 return;
             }
             log::warn!("engine exited: {exit}");
@@ -185,10 +184,8 @@ impl Engine {
 
     pub fn restart(&self, app: &AppHandle) -> Result<(u16, String), String> {
         if let Some(old) = self.running.lock().unwrap().take() {
-            self.quitting.store(true, Ordering::SeqCst);
+            self.generation.fetch_add(1, Ordering::SeqCst); // the old watcher will ignore this exit
             kill(&old.child);
-            thread::sleep(Duration::from_millis(600)); // let the old watcher notice and stop
-            self.quitting.store(false, Ordering::SeqCst);
         }
         self.start(app)
     }
@@ -200,6 +197,11 @@ impl Engine {
         }
     }
 
+    /// Whether the current engine process is alive (without starting one).
+    pub fn is_running(&self) -> bool {
+        self.running.lock().unwrap().as_ref().map(|r| is_alive(&r.child)).unwrap_or(false)
+    }
+
     pub fn last_error(&self) -> Option<String> {
         self.last_error.lock().unwrap().clone()
     }
@@ -208,6 +210,19 @@ impl Engine {
         log::error!("{msg}");
         *self.last_error.lock().unwrap() = Some(msg.clone());
         msg
+    }
+}
+
+/// Calls `f` for every line, decoding lossily: one non-UTF-8 line must not end the log.
+fn for_each_line(stream: impl Read, mut f: impl FnMut(&str)) {
+    let mut reader = BufReader::new(stream);
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => return,
+            Ok(_) => f(String::from_utf8_lossy(&buf).trim_end()),
+        }
     }
 }
 
@@ -343,6 +358,14 @@ mod tests {
     fn parses_ready_line() {
         assert_eq!(parse_ready("FLOWLENS_READY port=51234 version=0.2.0"), Some(51234));
         assert_eq!(parse_ready("FlowLens 0.2.0 running"), None);
+    }
+
+    #[test]
+    fn invalid_utf8_lines_do_not_stop_the_log() {
+        let input: &[u8] = b"first\nJ\xf6rg\nlast\n";
+        let mut lines = Vec::new();
+        for_each_line(input, |l| lines.push(l.to_string()));
+        assert_eq!(lines, vec!["first", "J\u{fffd}rg", "last"]);
     }
 
     #[test]

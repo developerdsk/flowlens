@@ -144,7 +144,7 @@ public class McpServer {
         return r;
     }
 
-    private ObjectNode callTool(JsonNode params) throws Exception {
+    private ObjectNode callTool(JsonNode params) {
         String name = params.path("name").asText();
         JsonNode args = params.path("arguments");
         String text;
@@ -159,8 +159,9 @@ public class McpServer {
                 case "compare_with_ref" -> compare(args.path("ref").asText());
                 default -> throw new IllegalArgumentException("Unknown tool: " + name);
             };
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return toolResult(e.getMessage(), true);
+        } catch (Exception e) {
+            // tool failures (bad input, git errors, unreadable folders) go back to the agent, not the protocol
+            return toolResult(e.getMessage() == null ? e.toString() : e.getMessage(), true);
         }
         return toolResult(text, false);
     }
@@ -269,8 +270,10 @@ public class McpServer {
     }
 
     private String compare(String ref) throws Exception {
-        Graph current = graph();
+        graph();
         if (indexedPath == null) throw new IllegalStateException("Index a project first.");
+        index(indexedPath, indexedOptions);   // the working tree as it is now (cheap with the parse cache)
+        Graph current = graph;
         AnalysisOptions o = indexedOptions.copy();
         o.ref = ref;
         Graph base = new FlowAnalyzer().analyze(indexedPath, o, FlowAnalyzer.Progress.NONE, null);

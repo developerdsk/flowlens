@@ -100,7 +100,7 @@ public class Server {
         }
         if (server == null) {
             throw new IOException("Could not start: port " + port + (attempts > 1 ? "-" + (port + attempts - 1) : "")
-                    + " already in use. Pass a different port, e.g. --serve 7171" + (last == null ? "" : ""));
+                    + " already in use. Pass a different port, e.g. --serve 7171", last);
         }
         server.createContext("/api/", this::handleApi);
         server.createContext("/", this::handleStatic);
@@ -258,7 +258,7 @@ public class Server {
         if (req.has("modules") && req.get("modules").isArray()) req.get("modules").forEach(m -> o.modules.add(m.asText()));
         if (req.hasNonNull("ref") && !req.get("ref").asText().isBlank()) {
             String ref = req.get("ref").asText().trim();
-            if (ref.startsWith("-") || ref.contains("..") && ref.contains(" ")) throw new BadRequest("Invalid git ref");
+            if (ref.startsWith("-") || ref.contains("..") || ref.contains(" ")) throw new BadRequest("Invalid git ref");
             o.ref = ref;
         }
         return new Target(root, o);
@@ -281,15 +281,16 @@ public class Server {
     private void jobStatus(HttpExchange ex, String id) throws IOException {
         Jobs.Job job = jobs.get(id);
         if (job == null) { sendError(ex, 404, "Unknown job"); return; }
-        ObjectNode o = Json.MAPPER.createObjectNode();
+        // a plain map so Jackson streams the (possibly large) graph once, without building a tree
+        Map<String, Object> o = new java.util.LinkedHashMap<>();
         o.put("id", job.id);
         o.put("state", job.state);
         o.put("phase", job.phase);
         o.put("done", job.done);
         o.put("total", job.total);
         if (job.error != null) o.put("error", job.error);
-        if ("done".equals(job.state)) o.set("graph", Json.MAPPER.valueToTree(job.graph));
-        sendJson(ex, 200, o);
+        if ("done".equals(job.state)) o.put("graph", job.graph);
+        send(ex, 200, "application/json; charset=utf-8", Json.MAPPER.writeValueAsBytes(o));
     }
 
     private void cancelJob(HttpExchange ex, String id) throws IOException {

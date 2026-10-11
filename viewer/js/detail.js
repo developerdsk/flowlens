@@ -33,7 +33,7 @@ export class DetailPanel {
     if (n.type === 'endpoint') meta.push(`<span>${esc(n.label)}</span>`);
     if (n.type === 'db') meta.push(`<span><b style="color:${nodeColor(n)}">${esc(n.op)}</b> → <b>${esc(n.table)}</b></span>`);
     if (n.type === 'external') meta.push(`<span><b>${esc(n.op)}</b> → <b>${esc(n.table)}</b></span>`);
-    if (n.file) meta.push(`<span class="loc">${esc(n.file)}${n.line ? ':' + n.line : ''}</span>`);
+    if (n.file) meta.push(`<span class="loc">${esc(n.file)}${n.line ? ':' + esc(n.line) : ''}</span>`);
     if (meta.length) p.push(`<div class="meta">${meta.join('')}</div>`);
 
     if (n.file && graph.sourcePath && !graph.ref) {

@@ -20,7 +20,7 @@ final class Jobs {
     static final class Job {
         final String id = UUID.randomUUID().toString();
         final AtomicBoolean cancel = new AtomicBoolean();
-        final long created = System.currentTimeMillis();
+        volatile long finished;              // 0 while running
         volatile String state = "running";   // running | done | error | cancelled
         volatile String phase = "queued";
         volatile int done;
@@ -32,6 +32,16 @@ final class Jobs {
     private static final int MAX_CACHES = 4;
     private static final long KEEP_MS = 10 * 60 * 1000;
 
+    private final java.util.concurrent.ScheduledExecutorService janitor = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "flowlens-jobs-cleanup");
+        t.setDaemon(true);
+        return t;
+    });
+
+    Jobs() {
+        janitor.scheduleWithFixedDelay(this::cleanup, 1, 1, java.util.concurrent.TimeUnit.MINUTES);
+    }
+
     private final ExecutorService pool = Executors.newFixedThreadPool(2, r -> {
         Thread t = new Thread(r, "flowlens-analysis");
         t.setDaemon(true);
@@ -42,7 +52,6 @@ final class Jobs {
     private final Map<String, Object> locks = new ConcurrentHashMap<>();
 
     Job start(Path root, AnalysisOptions options) {
-        cleanup();
         Job job = new Job();
         jobs.put(job.id, job);
         pool.submit(() -> run(job, root, options));
@@ -58,7 +67,9 @@ final class Jobs {
     }
 
     private void run(Job job, Path root, AnalysisOptions options) {
-        String key = root.toAbsolutePath().normalize() + "|" + options.key();
+        // One parse cache per project folder: entries are validated by content hash, so option sets
+        // and git refs can share it (a cache per option set would multiply memory use).
+        String key = root.toAbsolutePath().normalize().toString();
         Object lock = locks.computeIfAbsent(key, k -> new Object());
         synchronized (lock) {
             try {
@@ -83,6 +94,8 @@ final class Jobs {
                 job.error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 job.state = "error";
                 System.err.println("[error] analysis failed: " + job.error);
+            } finally {
+                job.finished = System.currentTimeMillis();
             }
         }
     }
@@ -102,6 +115,7 @@ final class Jobs {
     }
 
     Job get(String id) {
+        cleanup();
         return jobs.get(id);
     }
 
@@ -112,8 +126,9 @@ final class Jobs {
         return true;
     }
 
+    /** Drop results nobody fetched within KEEP_MS of the job finishing (running jobs are never dropped). */
     private void cleanup() {
         long now = System.currentTimeMillis();
-        jobs.values().removeIf(j -> !"running".equals(j.state) && now - j.created > KEEP_MS);
+        jobs.values().removeIf(j -> j.finished > 0 && now - j.finished > KEEP_MS);
     }
 }

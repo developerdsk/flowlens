@@ -18,17 +18,25 @@ export async function loadState() {
 }
 
 let saveTimer;
+async function writeState() {
+  const json = JSON.stringify(state);
+  try {
+    if (isDesktop) await invoke('save_state', { json });
+    else localStorage.setItem(KEY, json);
+  } catch { /* non-fatal */ }
+}
+
 export function saveState(patch) {
   Object.assign(state, patch);
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    const json = JSON.stringify(state);
-    try {
-      if (isDesktop) await invoke('save_state', { json });
-      else localStorage.setItem(KEY, json);
-    } catch { /* non-fatal */ }
-  }, 250);
+  saveTimer = setTimeout(writeState, 250);
   return state;
+}
+
+/** Write pending changes now (e.g. before restarting the engine, which reads the file). */
+export async function flushState() {
+  clearTimeout(saveTimer);
+  await writeState();
 }
 
 export function getState() { return state; }

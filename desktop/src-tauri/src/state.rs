@@ -1,8 +1,9 @@
 //! Small persisted app state: the viewer's preferences and recent projects (state.json in the
 //! OS config folder), plus files the OS asked us to open before the UI was ready.
 
+use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager};
@@ -37,3 +38,20 @@ pub fn recent_projects(app: &AppHandle) -> Vec<String> {
 /// Paths from the command line / file association / dock, waiting for the UI to ask.
 #[derive(Default)]
 pub struct PendingOpen(pub Mutex<Vec<String>>);
+
+/// Files the user handed to the app (drag & drop, OS open, command line, open dialog).
+/// The UI may read only these through `read_text_file`.
+#[derive(Default)]
+pub struct AllowedFiles(Mutex<HashSet<PathBuf>>);
+
+impl AllowedFiles {
+    pub fn allow(&self, path: &Path) {
+        if let Ok(p) = path.canonicalize() {
+            self.0.lock().unwrap().insert(p);
+        }
+    }
+
+    pub fn contains(&self, path: &Path) -> bool {
+        path.canonicalize().map(|p| self.0.lock().unwrap().contains(&p)).unwrap_or(false)
+    }
+}

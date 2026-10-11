@@ -1,7 +1,7 @@
 // FlowLens viewer — wires the toolbar, sidebar, graph, detail panel, and desktop integration.
 import { $, $$, esc, debounce, basename, modKey } from './util.js';
 import { api, runJob, engineInfo, isDesktop, invoke } from './api.js';
-import { loadState, saveState, getState, addRecent } from './state.js';
+import { loadState, saveState, flushState, getState, addRecent } from './state.js';
 import { FlowGraph, LAYERS } from './graph.js';
 import { Sidebar } from './sidebar.js';
 import { DetailPanel } from './detail.js';
@@ -37,6 +37,7 @@ let flow, sidebar, detail, minimap;
     onSelect: n => selectNode(n.id, { fromGraph: true }),
     onBackground: () => { app.selected = null; detail.clear(); },
     onViewport: () => minimap.schedule(),
+    onLayout: () => minimap.invalidate(),
   });
   flow.dir = state.layoutDir || 'LR';
   flow.showBranches = state.showBranches !== false;
@@ -280,7 +281,13 @@ async function compareWithRef() {
   const ref = await prompt('Compare with a git ref', 'Branch, tag or commit to compare the working tree against:', 'main');
   if (!ref) return;
   const base = await indexProject(app.projectPath, { ref });
-  if (base) await showDiff(base, ref);
+  if (!base) return;
+  try {
+    await showDiff(base, ref);
+  } catch (e) {
+    status('Compare failed: ' + e.message);
+    showModal(`<h3>Could not compare</h3><p>${esc(e.message)}</p>`);
+  }
 }
 
 async function compareWithSnapshot() {
@@ -331,14 +338,13 @@ function setWatch(on) {
   if (!on || !app.projectPath) return;
   const tick = async () => {
     if (app.busy || app.compare || !app.projectPath) return;
+    const path = app.projectPath;
     try {
-      const { fingerprint } = await api.fingerprint({ path: app.projectPath, includeTests: $('#optTests').checked });
-      if (app.fingerprint && fingerprint !== app.fingerprint) {
-        app.fingerprint = fingerprint;
-        await indexProject(app.projectPath, { silent: true, keepView: true });
-      } else {
-        app.fingerprint = fingerprint;
-      }
+      const { fingerprint } = await api.fingerprint({ path, includeTests: $('#optTests').checked });
+      // compare only with the last fingerprint of the same project (a newly opened one starts fresh)
+      const previous = app.fingerprint && app.fingerprint.path === path ? app.fingerprint.value : null;
+      app.fingerprint = { path, value: fingerprint };
+      if (previous && previous !== fingerprint) await indexProject(path, { silent: true, keepView: true });
     } catch { /* engine busy or folder gone */ }
   };
   tick();
@@ -407,7 +413,7 @@ function wireToolbar() {
   $('#optHeap').onchange = async e => {
     saveState({ maxHeapMb: e.target.value ? Number(e.target.value) : null });
     status('Restarting the analysis engine…');
-    await new Promise(r => setTimeout(r, 400)); // let the state file be written first
+    await flushState(); // the engine reads the heap setting from the state file
     try { await invoke('restart_engine'); status('Engine restarted with the new memory limit.'); }
     catch (err) { status('Could not restart the engine: ' + err); }
   };
@@ -577,7 +583,7 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = theme || 'auto';
   $('#themeBtn').textContent = theme === 'light' ? '☀' : theme === 'dark' ? '☾' : '◐';
   // let the CSS variables settle, then restyle the canvas
-  requestAnimationFrame(() => { flow?.restyle(); minimap?.schedule(); });
+  requestAnimationFrame(() => { flow?.restyle(); minimap?.invalidate(); });
 }
 window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme(getState().theme));
 

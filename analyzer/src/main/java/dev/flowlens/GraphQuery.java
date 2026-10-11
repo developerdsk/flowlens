@@ -62,7 +62,10 @@ public class GraphQuery {
         return seen;
     }
 
-    /** Endpoint by id, exact "VERB /path", or a unique substring of its http/label. */
+    /**
+     * Endpoint by id, exact "VERB /path", or a unique substring of its http/label.
+     * @throws IllegalArgumentException listing the candidates when the substring is ambiguous
+     */
     public Node findEndpoint(String query) {
         if (query == null) return null;
         Node byId = graph.get(query);
@@ -73,6 +76,11 @@ public class GraphQuery {
             String http = n.http == null ? "" : n.http.toLowerCase(Locale.ROOT);
             if (http.equals(q)) return n;
             if (http.contains(q) || n.label.toLowerCase(Locale.ROOT).contains(q)) matches.add(n);
+        }
+        if (matches.size() > 1) {
+            StringBuilder sb = new StringBuilder("'" + query + "' matches " + matches.size() + " entry points; be more specific:");
+            matches.stream().limit(30).forEach(n -> sb.append("\n  ").append(n.http));
+            throw new IllegalArgumentException(sb.toString());
         }
         return matches.isEmpty() ? null : matches.get(0);
     }
@@ -93,10 +101,15 @@ public class GraphQuery {
     public Map<String, Map<String, Set<String>>> tableAccess(String table) {
         String t = table.toLowerCase(Locale.ROOT);
         Map<String, Map<String, Set<String>>> res = new LinkedHashMap<>(); // table -> op -> endpoints
-        for (Node n : graph.nodes) {
-            if (!("db".equals(n.type) || "external".equals(n.type)) || n.table == null) continue;
+        List<Node> sinks = graph.nodes.stream()
+                .filter(n -> ("db".equals(n.type) || "external".equals(n.type)) && n.table != null).toList();
+        // exact (or schema-qualified) matches win; substring matching only when there are none
+        List<Node> matched = sinks.stream().filter(n -> {
             String nt = n.table.toLowerCase(Locale.ROOT);
-            if (!(nt.equals(t) || nt.endsWith("." + t) || nt.contains(t))) continue;
+            return nt.equals(t) || nt.endsWith("." + t);
+        }).toList();
+        if (matched.isEmpty()) matched = sinks.stream().filter(n -> n.table.toLowerCase(Locale.ROOT).contains(t)).toList();
+        for (Node n : matched) {
             for (String id : reaching(n.id)) {
                 Node ep = graph.get(id);
                 if (ep != null && "endpoint".equals(ep.type)) {

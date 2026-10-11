@@ -71,6 +71,8 @@ public class ProjectModel {
         public TypeDeclaration<?> decl;
         public CompilationUnit cu;
         public String qualifiedName;
+        /** Unique id: the qualified name, or "module:qualifiedName" for a same-named class in another module. */
+        public String key;
         public String simpleName;
         public String packageName;
         public String file;
@@ -128,7 +130,12 @@ public class ProjectModel {
     /** An @EventListener method and the event type it consumes. */
     public record EventListenerInfo(TypeInfo owner, MethodDeclaration method, String eventType) {}
 
+    /** First type registered under each qualified name (see {@link #qualified} for module-aware lookup). */
     public final Map<String, TypeInfo> byQualifiedName = new LinkedHashMap<>();
+    /** Every type, including same-named classes from different modules. */
+    public final List<TypeInfo> allTypes = new ArrayList<>();
+    /** "module|qualifiedName" -> type */
+    private final Map<String, TypeInfo> byModuleQualified = new HashMap<>();
     public final Map<String, List<TypeInfo>> bySimpleName = new HashMap<>();
     private final Map<TypeDeclaration<?>, TypeInfo> byDecl = new IdentityHashMap<>();
     /** entity name (JPQL name) or simple name -> entity type */
@@ -151,13 +158,13 @@ public class ProjectModel {
                 register(top, null, cu, pkg, sf);
             }
         }
-        for (TypeInfo t : byQualifiedName.values()) linkSupertypes(t);
-        for (TypeInfo t : byQualifiedName.values()) classify(t);
-        for (TypeInfo t : byQualifiedName.values()) classifyRepository(t, new LinkedHashSet<>());
-        for (TypeInfo t : byQualifiedName.values()) inheritInterfaceLayer(t);
-        for (TypeInfo t : byQualifiedName.values()) indexEventListeners(t);
+        for (TypeInfo t : allTypes) linkSupertypes(t);
+        for (TypeInfo t : allTypes) classify(t);
+        for (TypeInfo t : allTypes) classifyRepository(t, new LinkedHashSet<>());
+        for (TypeInfo t : allTypes) inheritInterfaceLayer(t);
+        for (TypeInfo t : allTypes) indexEventListeners(t);
         new MyBatisXml(this).index(mapperXml);
-        for (TypeInfo t : byQualifiedName.values()) {
+        for (TypeInfo t : allTypes) {
             if (t.isInterface && mapperStatementsFor(t.qualifiedName) && !t.isRepository) {
                 t.isRepository = true;
                 t.isMyBatisMapper = true;
@@ -200,9 +207,13 @@ public class ProjectModel {
             ti.methodsByName.computeIfAbsent(m.getNameAsString(), k -> new ArrayList<>()).add(m);
         }
 
+        ti.key = ti.qualifiedName;
         TypeInfo existing = byQualifiedName.get(ti.qualifiedName);
-        if (existing != null) {
-            // Duplicate class (two modules, or a generated copy). Prefer hand-written sources.
+        if (existing != null && existing.module != null && ti.module != null && !existing.module.equals(ti.module)) {
+            // Same class name in another module (e.g. two services sharing a package layout): keep both.
+            ti.key = ti.module + ":" + ti.qualifiedName;
+        } else if (existing != null) {
+            // Duplicate class within one module (a generated copy). Prefer hand-written sources.
             if (existing.generated && !ti.generated) {
                 unregister(existing);
             } else {
@@ -212,7 +223,9 @@ public class ProjectModel {
                 return;
             }
         }
-        byQualifiedName.put(ti.qualifiedName, ti);
+        if (!byQualifiedName.containsKey(ti.qualifiedName)) byQualifiedName.put(ti.qualifiedName, ti);
+        if (ti.module != null) byModuleQualified.putIfAbsent(ti.module + "|" + ti.qualifiedName, ti);
+        allTypes.add(ti);
         bySimpleName.computeIfAbsent(ti.simpleName, k -> new ArrayList<>()).add(ti);
         byDecl.put(decl, ti);
 
@@ -223,6 +236,8 @@ public class ProjectModel {
 
     private void unregister(TypeInfo t) {
         byQualifiedName.remove(t.qualifiedName);
+        allTypes.remove(t);
+        if (t.module != null) byModuleQualified.remove(t.module + "|" + t.qualifiedName, t);
         List<TypeInfo> list = bySimpleName.get(t.simpleName);
         if (list != null) list.remove(t);
         byDecl.remove(t.decl);
@@ -259,7 +274,7 @@ public class ProjectModel {
             t.isRepository = true;
             t.layer = REPOSITORY;
         }
-        if (has(d, "Mapper") && t.isInterface) {
+        if (has(d, "Mapper") && t.isInterface && !isMapStruct(t)) {
             t.isRepository = true;
             t.isMyBatisMapper = true;
             t.repoTech = "mybatis";
@@ -302,6 +317,19 @@ public class ProjectModel {
 
     private static boolean has(NodeWithAnnotations<?> n, String name) {
         return Annotations.get(n, name).isPresent();
+    }
+
+    /** MapStruct's @Mapper (a DTO converter), not MyBatis'. */
+    private static boolean isMapStruct(TypeInfo t) {
+        AnnotationExpr a = Annotations.get(t.decl, "Mapper").orElseThrow();
+        if (a.getNameAsString().startsWith("org.mapstruct")) return true;
+        if (Annotations.hasAttr(a, "componentModel") || Annotations.hasAttr(a, "uses") || Annotations.hasAttr(a, "config")
+                || Annotations.hasAttr(a, "unmappedTargetPolicy")) return true;
+        for (ImportDeclaration imp : t.cu.getImports()) {
+            String n = imp.getNameAsString();
+            if (n.equals("org.mapstruct.Mapper") || imp.isAsterisk() && n.equals("org.mapstruct")) return true;
+        }
+        return false;
     }
 
     boolean isMicronaut(TypeInfo t) {
@@ -464,6 +492,15 @@ public class ProjectModel {
     // queries
     // ------------------------------------------------------------------------------------------
 
+    /** A type by qualified name, preferring the copy in {@code ctx}'s module. */
+    public TypeInfo qualified(String qualifiedName, TypeInfo ctx) {
+        if (ctx != null && ctx.module != null) {
+            TypeInfo t = byModuleQualified.get(ctx.module + "|" + qualifiedName);
+            if (t != null) return t;
+        }
+        return byQualifiedName.get(qualifiedName);
+    }
+
     public TypeInfo typeOfDecl(TypeDeclaration<?> decl) {
         return byDecl.get(decl);
     }
@@ -491,7 +528,7 @@ public class ProjectModel {
         int lt = name.indexOf('<');
         if (lt >= 0) name = name.substring(0, lt);
         name = name.replace("[]", "").trim();
-        if (ctx == null) return uniqueBySimple(name);
+        if (ctx == null) return uniqueBySimple(name, null);
         Map<String, Optional<TypeInfo>> cache = resolveCache.computeIfAbsent(ctx, k -> new HashMap<>());
         Optional<TypeInfo> cached = cache.get(name);
         if (cached != null) return cached.orElse(null);
@@ -502,12 +539,12 @@ public class ProjectModel {
 
     private TypeInfo doResolve(String name, TypeInfo ctx) {
         if (name.contains(".")) {
-            TypeInfo exact = byQualifiedName.get(name);
+            TypeInfo exact = qualified(name, ctx);
             if (exact != null) return exact;
             int dot = name.indexOf('.');
             TypeInfo head = doResolve(name.substring(0, dot), ctx);
             if (head != null) {
-                TypeInfo nested = byQualifiedName.get(head.qualifiedName + name.substring(dot));
+                TypeInfo nested = qualified(head.qualifiedName + name.substring(dot), ctx);
                 if (nested != null) return nested;
             }
             // a fully-qualified library type, or unknown
@@ -516,11 +553,11 @@ public class ProjectModel {
         if (JAVA_LANG.contains(name)) return null;
         // 1. nested types of ctx and its outers (and their supertypes)
         for (TypeInfo t = ctx; t != null; t = t.outer) {
-            TypeInfo nested = byQualifiedName.get(t.qualifiedName + "." + name);
+            TypeInfo nested = qualified(t.qualifiedName + "." + name, ctx);
             if (nested != null) return nested;
             if (t.simpleName.equals(name)) return t;
             for (TypeInfo sup : t.supertypes) {
-                TypeInfo inh = byQualifiedName.get(sup.qualifiedName + "." + name);
+                TypeInfo inh = qualified(sup.qualifiedName + "." + name, ctx);
                 if (inh != null) return inh;
             }
         }
@@ -535,21 +572,21 @@ public class ProjectModel {
         for (ImportDeclaration imp : ctx.cu.getImports()) {
             if (imp.isAsterisk() || imp.isStatic()) continue;
             String in = imp.getNameAsString();
-            if (in.endsWith("." + name)) return byQualifiedName.get(in);
+            if (in.endsWith("." + name)) return qualified(in, ctx);
         }
         // 4. same package
-        TypeInfo samePkg = byQualifiedName.get(ctx.packageName.isEmpty() ? name : ctx.packageName + "." + name);
+        TypeInfo samePkg = qualified(ctx.packageName.isEmpty() ? name : ctx.packageName + "." + name, ctx);
         if (samePkg != null) return samePkg;
         // 5. wildcard imports
         boolean libraryWildcards = false;
         for (ImportDeclaration imp : ctx.cu.getImports()) {
             if (!imp.isAsterisk() || imp.isStatic()) continue;
-            TypeInfo t = byQualifiedName.get(imp.getNameAsString() + "." + name);
+            TypeInfo t = qualified(imp.getNameAsString() + "." + name, ctx);
             if (t != null) return t;
             if (!hasPackage(imp.getNameAsString())) libraryWildcards = true;
         }
         // 6. project-wide unique simple name (handles code with incomplete imports)
-        TypeInfo unique = uniqueBySimple(name);
+        TypeInfo unique = uniqueBySimple(name, ctx);
         if (unique != null && libraryWildcards && isCommonLibraryName(name)) return null;
         return unique;
     }
@@ -565,10 +602,15 @@ public class ProjectModel {
                 "ResponseEntity", "HttpStatus", "Model", "Logger", "Stream").contains(name);
     }
 
-    private TypeInfo uniqueBySimple(String name) {
+    private TypeInfo uniqueBySimple(String name, TypeInfo ctx) {
         List<TypeInfo> list = bySimpleName.get(name);
         if (list == null || list.isEmpty()) return null;
         if (list.size() == 1) return list.get(0);
+        if (ctx != null && ctx.module != null) {
+            List<TypeInfo> sameModule = list.stream().filter(t -> ctx.module.equals(t.module)).toList();
+            if (sameModule.size() == 1) return sameModule.get(0);
+            if (!sameModule.isEmpty()) list = sameModule;
+        }
         // prefer top-level, hand-written types
         return list.stream()
                 .sorted(Comparator.comparing((TypeInfo t) -> t.generated)
@@ -640,7 +682,7 @@ public class ProjectModel {
             boolean varargs = n > 0 && r.method().getParameter(n - 1).isVarArgs();
             if (n == argc || varargs && argc >= n - 1) arity.add(r);
         }
-        if (arity.isEmpty()) return new MethodRef(all.get(0).owner(), all.get(0).method(), true);
+        if (arity.isEmpty()) return null; // e.g. an inherited library method with the same name
         if (arity.size() == 1) return arity.get(0);
         // Prefer the most-derived declaration with matching parameter types.
         MethodRef best = null;

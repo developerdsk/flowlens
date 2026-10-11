@@ -205,7 +205,7 @@ public final class Annotations {
             String in = imp.getNameAsString();
             String typeName = imp.isAsterisk() ? in : in.endsWith("." + name) ? in.substring(0, in.lastIndexOf('.')) : null;
             if (typeName == null) continue;
-            TypeInfo owner = model.byQualifiedName.get(typeName);
+            TypeInfo owner = model.qualified(typeName, ctx);
             if (owner == null) continue;
             Optional<ProjectModel.FieldMatch> f = model.findField(owner, name);
             if (f.isPresent() && f.get().initializer().isPresent()) {

@@ -145,9 +145,11 @@ export class Sidebar {
     badge.hidden = !warn;
     badge.textContent = `⚠ ${warn} file${warn === 1 ? '' : 's'} skipped`;
     const s = g.stats || {};
-    const parts = [`<div class="stats">${s.filesParsed ?? '?'} of ${s.filesFound ?? '?'} Java files analyzed` +
-      `${s.filesSkipped ? `, <b>${s.filesSkipped} skipped</b>` : ''}${s.xmlMappers ? `, ${s.xmlMappers} MyBatis XML files` : ''}` +
-      `${s.durationMs ? ` · ${(s.durationMs / 1000).toFixed(1)} s` : ''}</div>`];
+    // snapshots are untrusted files: everything interpolated is escaped / coerced to numbers
+    const num = v => (Number.isFinite(Number(v)) ? Number(v) : '?');
+    const parts = [`<div class="stats">${num(s.filesParsed)} of ${num(s.filesFound)} Java files analyzed` +
+      `${s.filesSkipped ? `, <b>${num(s.filesSkipped)} skipped</b>` : ''}${s.xmlMappers ? `, ${num(s.xmlMappers)} MyBatis XML files` : ''}` +
+      `${s.durationMs ? ` · ${(num(s.durationMs) / 1000).toFixed(1)} s` : ''}</div>`];
     const sorted = [...diags].sort((a, b) => (a.severity === 'warning' ? 0 : 1) - (b.severity === 'warning' ? 0 : 1));
     for (const d of sorted.filter(d => this.matches(d.file, d.message))) {
       parts.push(`<div class="issue ${esc(d.severity)}"><span class="sev">${d.severity === 'warning' ? '⚠' : 'ℹ'}</span>

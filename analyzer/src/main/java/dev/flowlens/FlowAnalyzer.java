@@ -285,7 +285,7 @@ public class FlowAnalyzer {
             if (!belongsTo(th, body)) continue;
             String exc = th.getExpression() instanceof ObjectCreationExpr oc ? oc.getType().getNameAsString()
                     : oneLine(truncate(th.getExpression().toString(), 50));
-            String id = "T:" + nodeId + "@" + pos(th);
+            String id = "T:" + nodeId + "#" + ordinal(body, th);
             dev.flowlens.model.Node tn = graph.upsert(new dev.flowlens.model.Node(id, "throw " + exc, "throw"));
             tn.layer = "flow";
             tn.line = th.getBegin().map(p -> p.line).orElse(null);
@@ -486,7 +486,7 @@ public class FlowAnalyzer {
 
     /** Ensure a node for a project method exists (filled once) and is queued for walking. */
     String methodNode(TypeInfo owner, MethodDeclaration md) {
-        String id = "M:" + owner.qualifiedName + "#" + ProjectModel.signature(md);
+        String id = "M:" + owner.key + "#" + ProjectModel.signature(md);
         if (!graph.has(id)) {
             dev.flowlens.model.Node n = graph.upsert(new dev.flowlens.model.Node(id,
                     owner.simpleName + "." + md.getNameAsString() + "()", "method"));
@@ -510,7 +510,7 @@ public class FlowAnalyzer {
         String prev = fromId;
         String prevSide = null;
         for (Guard g : guards) {
-            String gid = "BR:" + fromId + "@" + pos(g.node());
+            String gid = "BR:" + fromId + "#" + ordinal(body, g.node());
             dev.flowlens.model.Node gn = graph.upsert(new dev.flowlens.model.Node(gid, g.label(), "branch"));
             gn.layer = "flow";
             gn.line = g.node().getBegin().map(p -> p.line).orElse(null);
@@ -566,8 +566,19 @@ public class FlowAnalyzer {
         return out;
     }
 
-    private static String pos(Node n) {
-        return n.getBegin().map(p -> p.line + ":" + p.column).orElse("?");
+    /**
+     * A position-independent id for a guard/throw inside a method: its kind and index among nodes of
+     * that kind. Unlike line:column it does not change when code above the method moves, so diff
+     * mode does not report unchanged branches as removed and re-added.
+     */
+    private static String ordinal(Node body, Node n) {
+        List<? extends Node> same = body.findAll(n.getClass());
+        int i = 0;
+        for (Node x : same) {
+            if (x == n) break;
+            i++;
+        }
+        return n.getClass().getSimpleName() + i;
     }
 
     // ------------------------------------------------------------------------------------------
