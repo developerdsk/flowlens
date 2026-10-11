@@ -23,3 +23,12 @@ viewer/graph.json
 # scratch
 scratch/
 *.log
+
+# viewer test tooling
+viewer/node_modules/
+
+# desktop build output
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+build/

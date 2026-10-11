@@ -1,83 +1,419 @@
 {
-  "generatedBy" : "FlowLens 0.1.0",
-  "nodes" : [ {
-    "id" : "EP:com.example.demo.AccountController#createAccount",
-    "label" : "AccountController.createAccount()",
-    "type" : "endpoint",
-    "layer" : "controller",
-    "http" : "POST /api/createAccount",
-    "file" : "AccountController.java",
-    "line" : 18,
-    "conditions" : [ ],
-    "mutations" : [ ],
-    "source" : "@PostMapping(\"/createAccount\")\r\npublic Account createAccount(@RequestBody CreateAccountRequest request) {\r\n    return accountService.create(request);\r\n}"
-  }, {
-    "id" : "M:com.example.demo.AccountService#create/1",
-    "label" : "AccountService.create()",
-    "type" : "method",
-    "layer" : "service",
-    "file" : "AccountService.java",
-    "line" : 16,
-    "conditions" : [ "if (accountRepository.existsByEmail(request.getEmail()))", "if (request.getName() != null && request.getName().length() > 2)" ],
-    "mutations" : [ "account.setEmail(request.getEmail())", "account.setName(request.getName())", "account.setStatus(\"ACTIVE\")", "account.setStatus(\"PENDING\")" ],
-    "source" : "public Account create(CreateAccountRequest request) {\r\n    if (accountRepository.existsByEmail(request.getEmail())) {\r\n        throw new IllegalStateException(\"email already registered\");\r\n    }\r\n    Account account = new Account();\r\n    account.setEmail(request.getEmail());\r\n    account.setName(request.getName());\r\n    if (request.getName() != null && request.getName().length() > 2) {\r\n        account.setStatus(\"ACTIVE\");\r\n    } else {\r\n        account.setStatus(\"PENDING\");\r\n    }\r\n    Account saved = accountRepository.save(account);\r\n    auditService.record(\"account.created\", saved.getId());\r\n    return saved;\r\n}"
-  }, {
-    "id" : "DB:SELECT:account",
-    "label" : "SELECT account",
-    "type" : "db",
-    "layer" : "db",
-    "op" : "SELECT",
-    "table" : "account",
-    "conditions" : [ ],
-    "mutations" : [ ]
-  }, {
-    "id" : "DB:UPSERT:account",
-    "label" : "UPSERT account",
-    "type" : "db",
-    "layer" : "db",
-    "op" : "UPSERT",
-    "table" : "account",
-    "conditions" : [ ],
-    "mutations" : [ ]
-  }, {
-    "id" : "M:com.example.demo.AuditService#record/2",
-    "label" : "AuditService.record()",
-    "type" : "method",
-    "layer" : "service",
-    "file" : "AuditService.java",
-    "line" : 15,
-    "conditions" : [ ],
-    "mutations" : [ ],
-    "source" : "public void record(String event, Long entityId) {\r\n    jdbcTemplate.update(\"INSERT INTO audit_log (event, entity_id) VALUES (?, ?)\", event, entityId);\r\n}"
-  }, {
-    "id" : "DB:INSERT:audit_log",
-    "label" : "INSERT audit_log",
-    "type" : "db",
-    "layer" : "db",
-    "op" : "INSERT",
-    "table" : "audit_log",
-    "conditions" : [ ],
-    "mutations" : [ ]
-  } ],
-  "edges" : [ {
-    "source" : "EP:com.example.demo.AccountController#createAccount",
-    "target" : "M:com.example.demo.AccountService#create/1",
-    "label" : "create"
-  }, {
-    "source" : "M:com.example.demo.AccountService#create/1",
-    "target" : "DB:SELECT:account",
-    "label" : "AccountRepository.existsByEmail()"
-  }, {
-    "source" : "M:com.example.demo.AccountService#create/1",
-    "target" : "DB:UPSERT:account",
-    "label" : "AccountRepository.save()"
-  }, {
-    "source" : "M:com.example.demo.AccountService#create/1",
-    "target" : "M:com.example.demo.AuditService#record/2",
-    "label" : "record"
-  }, {
-    "source" : "M:com.example.demo.AuditService#record/2",
-    "target" : "DB:INSERT:audit_log",
-    "label" : "jdbc.update()"
-  } ]
+ "schemaVersion": 2,
+ "generatedBy": "FlowLens 0.2.0",
+ "sourcePath": null,
+ "nodes": [
+  {
+   "id": "EP:com.example.demo.AccountController#createAccount(CreateAccountRequest)@POST /api/accounts",
+   "label": "AccountController.createAccount()",
+   "type": "endpoint",
+   "layer": "controller",
+   "kind": "http",
+   "http": "POST /api/accounts",
+   "verb": "POST",
+   "path": "/api/accounts",
+   "framework": "spring",
+   "file": "src/main/java/com/example/demo/AccountController.java",
+   "line": 23,
+   "confidence": "high",
+   "lineage": [
+    {
+     "from": "request.email",
+     "to": "account.email",
+     "via": "AccountServiceImpl.create()"
+    },
+    {
+     "from": "request.name",
+     "to": "account.name",
+     "via": "AccountServiceImpl.create()"
+    }
+   ],
+   "source": "@PostMapping\npublic Account createAccount(@RequestBody CreateAccountRequest request) {\n    return accountService.create(request);\n}",
+   "hash": "b685219121e3"
+  },
+  {
+   "id": "M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)",
+   "label": "AccountServiceImpl.create()",
+   "type": "method",
+   "layer": "service",
+   "file": "src/main/java/com/example/demo/AccountServiceImpl.java",
+   "line": 20,
+   "confidence": "high",
+   "conditions": [
+    "if (accountRepository.existsByEmail(request.getEmail()))",
+    "if (request.getName() != null && request.getName().length() > 2)"
+   ],
+   "mutations": [
+    "account.setEmail(request.getEmail())",
+    "account.setName(request.getName())",
+    "account.setStatus(\"ACTIVE\")",
+    "account.setStatus(\"PENDING\")"
+   ],
+   "source": "@Override\npublic Account create(CreateAccountRequest request) {\n    if (accountRepository.existsByEmail(request.getEmail())) {\n        throw new IllegalStateException(\"email already registered\");\n    }\n    Account account = new Account();\n    account.setEmail(request.getEmail());\n    account.setName(request.getName());\n    if (request.getName() != null && request.getName().length() > 2) {\n        account.setStatus(\"ACTIVE\");\n    } else {\n        account.setStatus(\"PENDING\");\n    }\n    Account saved = accountRepository.save(account);\n    auditService.record(\"account.created\", saved.getId());\n    events.publishEvent(new AccountCreatedEvent(saved.getId(), saved.getEmail()));\n    return saved;\n}",
+   "hash": "7146074fdafb"
+  },
+  {
+   "id": "DB:SELECT:account",
+   "label": "SELECT account",
+   "type": "db",
+   "layer": "db",
+   "op": "SELECT",
+   "table": "account",
+   "tech": "jpa",
+   "confidence": "high"
+  },
+  {
+   "id": "DB:UPSERT:account",
+   "label": "UPSERT account",
+   "type": "db",
+   "layer": "db",
+   "op": "UPSERT",
+   "table": "account",
+   "tech": "jpa",
+   "confidence": "high"
+  },
+  {
+   "id": "M:com.example.demo.AuditService#record(String,Long)",
+   "label": "AuditService.record()",
+   "type": "method",
+   "layer": "service",
+   "file": "src/main/java/com/example/demo/AuditService.java",
+   "line": 15,
+   "confidence": "high",
+   "source": "public void record(String event, Long entityId) {\n    jdbcTemplate.update(\"INSERT INTO audit_log (event, entity_id) VALUES (?, ?)\", event, entityId);\n}",
+   "hash": "734c73bc039e"
+  },
+  {
+   "id": "M:com.example.demo.WelcomeMailer#onAccountCreated(AccountCreatedEvent)",
+   "label": "WelcomeMailer.onAccountCreated()",
+   "type": "method",
+   "layer": "service",
+   "file": "src/main/java/com/example/demo/WelcomeMailer.java",
+   "line": 22,
+   "confidence": "high",
+   "source": "@EventListener\npublic void onAccountCreated(AccountCreatedEvent event) {\n    kafka.send(ACCOUNT_TOPIC, String.valueOf(event.accountId()), event.email());\n    rest.postForObject(\"http://mail-service/api/welcome\", event.email(), Void.class);\n}",
+   "hash": "8f649a134ea0"
+  },
+  {
+   "id": "T:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)@23:13",
+   "label": "throw IllegalStateException",
+   "type": "throw",
+   "layer": "flow",
+   "file": "src/main/java/com/example/demo/AccountServiceImpl.java",
+   "line": 23,
+   "source": "throw new IllegalStateException(\"email already registered\");"
+  },
+  {
+   "id": "BR:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)@22:9",
+   "label": "if (accountRepository.existsByEmail(request.getEmail()))",
+   "type": "branch",
+   "layer": "flow",
+   "file": "src/main/java/com/example/demo/AccountServiceImpl.java",
+   "line": 22
+  },
+  {
+   "id": "EXT:kafka:SEND:account-events",
+   "label": "KAFKA \u2192 account-events",
+   "type": "external",
+   "layer": "external",
+   "op": "SEND",
+   "table": "account-events",
+   "tech": "kafka",
+   "confidence": "high"
+  },
+  {
+   "id": "EXT:http:POST:http://mail-service/api/welcome",
+   "label": "POST http://mail-service/api/welcome",
+   "type": "external",
+   "layer": "external",
+   "op": "POST",
+   "table": "http://mail-service/api/welcome",
+   "tech": "http",
+   "detail": "POST http://mail-service/api/welcome",
+   "confidence": "high"
+  },
+  {
+   "id": "DB:INSERT:audit_log",
+   "label": "INSERT audit_log",
+   "type": "db",
+   "layer": "db",
+   "op": "INSERT",
+   "table": "audit_log",
+   "tech": "jdbc",
+   "detail": "INSERT INTO audit_log (event, entity_id) VALUES (?, ?)",
+   "confidence": "high"
+  },
+  {
+   "id": "EP:com.example.demo.AccountController#getAccount(Long)@GET /api/accounts/{id}",
+   "label": "AccountController.getAccount()",
+   "type": "endpoint",
+   "layer": "controller",
+   "kind": "http",
+   "http": "GET /api/accounts/{id}",
+   "verb": "GET",
+   "path": "/api/accounts/{id}",
+   "framework": "spring",
+   "file": "src/main/java/com/example/demo/AccountController.java",
+   "line": 28,
+   "confidence": "high",
+   "source": "@GetMapping(\"/{id}\")\npublic Account getAccount(@PathVariable Long id) {\n    return accountService.find(id);\n}",
+   "hash": "820b1b80dd38"
+  },
+  {
+   "id": "M:com.example.demo.AccountServiceImpl#find(Long)",
+   "label": "AccountServiceImpl.find()",
+   "type": "method",
+   "layer": "service",
+   "file": "src/main/java/com/example/demo/AccountServiceImpl.java",
+   "line": 42,
+   "confidence": "high",
+   "source": "@Override\npublic Account find(Long id) {\n    return accountRepository.findById(id).orElseThrow(() -> new IllegalArgumentException(\"no account \" + id));\n}",
+   "hash": "419fd4132757"
+  },
+  {
+   "id": "EP:com.example.demo.AccountController#changeStatus(Long,String)@PATCH /api/accounts/{id}/status",
+   "label": "AccountController.changeStatus()",
+   "type": "endpoint",
+   "layer": "controller",
+   "kind": "http",
+   "http": "PATCH /api/accounts/{id}/status",
+   "verb": "PATCH",
+   "path": "/api/accounts/{id}/status",
+   "framework": "spring",
+   "file": "src/main/java/com/example/demo/AccountController.java",
+   "line": 33,
+   "confidence": "high",
+   "source": "@PatchMapping(\"/{id}/status\")\npublic void changeStatus(@PathVariable Long id, @RequestParam String status) {\n    accountService.changeStatus(id, status);\n}",
+   "hash": "62b51b77cb12"
+  },
+  {
+   "id": "M:com.example.demo.AccountServiceImpl#changeStatus(Long,String)",
+   "label": "AccountServiceImpl.changeStatus()",
+   "type": "method",
+   "layer": "service",
+   "file": "src/main/java/com/example/demo/AccountServiceImpl.java",
+   "line": 48,
+   "confidence": "high",
+   "source": "@Override\npublic void changeStatus(Long id, String status) {\n    accountRepository.updateStatus(id, status);\n    auditService.record(\"account.status\", id);\n}",
+   "hash": "3ac7f02b79fa"
+  },
+  {
+   "id": "DB:UPDATE:account",
+   "label": "UPDATE account",
+   "type": "db",
+   "layer": "db",
+   "op": "UPDATE",
+   "table": "account",
+   "tech": "jpa",
+   "detail": "update Account a set a.status = :status where a.id = :id",
+   "confidence": "high"
+  },
+  {
+   "id": "EP:com.example.demo.AccountController#closeAccount(Long)@DELETE /api/accounts/{id}",
+   "label": "AccountController.closeAccount()",
+   "type": "endpoint",
+   "layer": "controller",
+   "kind": "http",
+   "http": "DELETE /api/accounts/{id}",
+   "verb": "DELETE",
+   "path": "/api/accounts/{id}",
+   "framework": "spring",
+   "file": "src/main/java/com/example/demo/AccountController.java",
+   "line": 38,
+   "confidence": "high",
+   "source": "@DeleteMapping(\"/{id}\")\npublic void closeAccount(@PathVariable Long id) {\n    accountService.close(id);\n}",
+   "hash": "54ae252be60d"
+  },
+  {
+   "id": "M:com.example.demo.AccountServiceImpl#close(Long)",
+   "label": "AccountServiceImpl.close()",
+   "type": "method",
+   "layer": "service",
+   "file": "src/main/java/com/example/demo/AccountServiceImpl.java",
+   "line": 54,
+   "confidence": "high",
+   "conditions": [
+    "if (\"CLOSED\".equals(account.getStatus()))"
+   ],
+   "mutations": [
+    "account.setStatus(\"CLOSED\")"
+   ],
+   "source": "@Override\npublic void close(Long id) {\n    Account account = find(id);\n    if (\"CLOSED\".equals(account.getStatus())) {\n        return;\n    }\n    account.setStatus(\"CLOSED\");\n    accountRepository.save(account);\n    auditService.record(\"account.closed\", id);\n}",
+   "hash": "93436d59ad33"
+  },
+  {
+   "id": "EP:com.example.demo.DormantAccountCleanup#purgeClosedAccounts()@SCHEDULED cron=0 0 3 * * *",
+   "label": "DormantAccountCleanup.purgeClosedAccounts()",
+   "type": "endpoint",
+   "layer": "controller",
+   "kind": "scheduled",
+   "http": "SCHEDULED cron=0 0 3 * * *",
+   "verb": "SCHEDULED",
+   "path": "cron=0 0 3 * * *",
+   "framework": "spring",
+   "file": "src/main/java/com/example/demo/DormantAccountCleanup.java",
+   "line": 16,
+   "confidence": "high",
+   "source": "@Scheduled(cron = \"0 0 3 * * *\")\npublic void purgeClosedAccounts() {\n    accountRepository.deleteByStatus(\"CLOSED\");\n}",
+   "hash": "cfd1a31b0ff9"
+  },
+  {
+   "id": "DB:DELETE:account",
+   "label": "DELETE account",
+   "type": "db",
+   "layer": "db",
+   "op": "DELETE",
+   "table": "account",
+   "tech": "jpa",
+   "confidence": "high"
+  }
+ ],
+ "edges": [
+  {
+   "source": "EP:com.example.demo.AccountController#createAccount(CreateAccountRequest)@POST /api/accounts",
+   "target": "M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)",
+   "label": "create",
+   "confidence": "high",
+   "kind": "call"
+  },
+  {
+   "source": "M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)",
+   "target": "DB:SELECT:account",
+   "label": "AccountRepository.existsByEmail()",
+   "confidence": "high",
+   "kind": "sink"
+  },
+  {
+   "source": "M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)",
+   "target": "DB:UPSERT:account",
+   "label": "AccountRepository.save()",
+   "confidence": "high",
+   "kind": "sink"
+  },
+  {
+   "source": "M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)",
+   "target": "M:com.example.demo.AuditService#record(String,Long)",
+   "label": "record",
+   "confidence": "high",
+   "kind": "call"
+  },
+  {
+   "source": "M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)",
+   "target": "M:com.example.demo.WelcomeMailer#onAccountCreated(AccountCreatedEvent)",
+   "label": "event AccountCreatedEvent",
+   "confidence": "medium",
+   "kind": "event"
+  },
+  {
+   "source": "M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)",
+   "target": "BR:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)@22:9",
+   "confidence": "high",
+   "kind": "branch"
+  },
+  {
+   "source": "BR:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)@22:9",
+   "target": "T:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)@23:13",
+   "label": "then \u00b7 throws",
+   "confidence": "high",
+   "kind": "flow"
+  },
+  {
+   "source": "M:com.example.demo.WelcomeMailer#onAccountCreated(AccountCreatedEvent)",
+   "target": "EXT:kafka:SEND:account-events",
+   "label": "kafka.send()",
+   "confidence": "high",
+   "kind": "sink"
+  },
+  {
+   "source": "M:com.example.demo.WelcomeMailer#onAccountCreated(AccountCreatedEvent)",
+   "target": "EXT:http:POST:http://mail-service/api/welcome",
+   "label": "rest.postForObject()",
+   "confidence": "high",
+   "kind": "sink"
+  },
+  {
+   "source": "M:com.example.demo.AuditService#record(String,Long)",
+   "target": "DB:INSERT:audit_log",
+   "label": "jdbc.update()",
+   "confidence": "high",
+   "kind": "sink"
+  },
+  {
+   "source": "EP:com.example.demo.AccountController#getAccount(Long)@GET /api/accounts/{id}",
+   "target": "M:com.example.demo.AccountServiceImpl#find(Long)",
+   "label": "find",
+   "confidence": "high",
+   "kind": "call"
+  },
+  {
+   "source": "M:com.example.demo.AccountServiceImpl#find(Long)",
+   "target": "DB:SELECT:account",
+   "label": "AccountRepository.findById()",
+   "confidence": "high",
+   "kind": "sink"
+  },
+  {
+   "source": "EP:com.example.demo.AccountController#changeStatus(Long,String)@PATCH /api/accounts/{id}/status",
+   "target": "M:com.example.demo.AccountServiceImpl#changeStatus(Long,String)",
+   "label": "changeStatus",
+   "confidence": "high",
+   "kind": "call"
+  },
+  {
+   "source": "M:com.example.demo.AccountServiceImpl#changeStatus(Long,String)",
+   "target": "DB:UPDATE:account",
+   "label": "AccountRepository.updateStatus()",
+   "confidence": "high",
+   "kind": "sink"
+  },
+  {
+   "source": "M:com.example.demo.AccountServiceImpl#changeStatus(Long,String)",
+   "target": "M:com.example.demo.AuditService#record(String,Long)",
+   "label": "record",
+   "confidence": "high",
+   "kind": "call"
+  },
+  {
+   "source": "EP:com.example.demo.AccountController#closeAccount(Long)@DELETE /api/accounts/{id}",
+   "target": "M:com.example.demo.AccountServiceImpl#close(Long)",
+   "label": "close",
+   "confidence": "high",
+   "kind": "call"
+  },
+  {
+   "source": "M:com.example.demo.AccountServiceImpl#close(Long)",
+   "target": "M:com.example.demo.AccountServiceImpl#find(Long)",
+   "label": "find",
+   "confidence": "high",
+   "kind": "call"
+  },
+  {
+   "source": "M:com.example.demo.AccountServiceImpl#close(Long)",
+   "target": "DB:UPSERT:account",
+   "label": "AccountRepository.save()",
+   "confidence": "high",
+   "kind": "sink"
+  },
+  {
+   "source": "M:com.example.demo.AccountServiceImpl#close(Long)",
+   "target": "M:com.example.demo.AuditService#record(String,Long)",
+   "label": "record",
+   "confidence": "high",
+   "kind": "call"
+  },
+  {
+   "source": "EP:com.example.demo.DormantAccountCleanup#purgeClosedAccounts()@SCHEDULED cron=0 0 3 * * *",
+   "target": "DB:DELETE:account",
+   "label": "AccountRepository.deleteByStatus()",
+   "confidence": "high",
+   "kind": "sink"
+  }
+ ],
+ "stats": {
+  "filesFound": 10,
+  "filesParsed": 10,
+  "filesSkipped": 0,
+  "xmlMappers": 0,
+  "durationMs": 384
+ }
 }

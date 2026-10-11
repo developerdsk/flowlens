@@ -1,352 +1,146 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="auto">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FlowLens — Java Data-Flow Viewer</title>
+<title>FlowLens</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/app.css">
 <script src="vendor/cytoscape.min.js"></script>
 <script src="vendor/dagre.min.js"></script>
 <script src="vendor/cytoscape-dagre.min.js"></script>
-<style>
-  :root {
-    --bg: #0f1420; --panel: #161d2e; --panel2: #1e2740; --line: #2a3652;
-    --text: #e6ebf5; --muted: #93a1c0; --accent: #7c3aed;
-    --controller: #8b5cf6; --service: #3b82f6; --repository: #06b6d4;
-    --db-read: #64748b; --db-write: #22c55e; --db-update: #eab308; --db-delete: #ef4444;
-    --other: #64748b;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
-  body { background: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; }
-
-  header {
-    display: flex; align-items: center; gap: 14px; padding: 10px 16px;
-    background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap;
-  }
-  header .brand { font-weight: 700; font-size: 16px; letter-spacing: .3px; }
-  header .brand span { color: var(--accent); }
-  header .tagline { color: var(--muted); font-size: 12px; }
-  header .spacer { flex: 1; }
-  select, button, input[type="text"] {
-    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
-    border-radius: 6px; padding: 6px 10px; font-size: 13px;
-  }
-  button { cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  button.primary:hover { filter: brightness(1.1); }
-  #pathInput { width: 230px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
-  .layers { display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--muted); }
-  .layers label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
-  .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
-  .divider { width: 1px; height: 24px; background: var(--line); }
-
-  main { flex: 1; display: flex; min-height: 0; }
-  #cy { flex: 1; min-width: 0; }
-  aside {
-    width: 380px; background: var(--panel); border-left: 1px solid var(--line);
-    overflow-y: auto; padding: 16px; font-size: 13px;
-  }
-  aside .empty { color: var(--muted); margin-top: 40px; text-align: center; line-height: 1.6; }
-  aside h2 { font-size: 15px; margin: 0 0 4px; }
-  aside .badge {
-    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
-    background: var(--panel2); color: var(--muted); margin-right: 6px;
-  }
-  aside .meta { color: var(--muted); font-size: 12px; margin: 8px 0 14px; }
-  aside .http { font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--controller); font-weight: 600; }
-  aside .op { font-family: ui-monospace, monospace; font-weight: 700; }
-  section.detail { margin-bottom: 16px; }
-  section.detail .title { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin-bottom: 6px; }
-  ul.list { list-style: none; margin: 0; padding: 0; }
-  ul.list li {
-    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
-    background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
-    padding: 6px 8px; margin-bottom: 5px; word-break: break-word;
-  }
-  ul.list li.cond { border-left: 3px solid var(--db-update); }
-  ul.list li.mut { border-left: 3px solid var(--service); }
-  pre.source {
-    background: #0b0f18; border: 1px solid var(--line); border-radius: 8px;
-    padding: 12px; overflow-x: auto; font-size: 12px; line-height: 1.5;
-    font-family: ui-monospace, Menlo, Consolas, monospace; color: #cdd6f4;
-  }
-  .hint { color: var(--muted); font-size: 12px; }
-  footer { padding: 6px 16px; background: var(--panel); border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
-</style>
+<script type="module" src="js/app.js"></script>
 </head>
 <body>
-<header>
-  <div>
-    <div class="brand"><span>Flow</span>Lens</div>
-    <div class="tagline">endpoint → data flow → database</div>
+<header class="toolbar">
+  <div class="brand" title="FlowLens — endpoint → data flow → database">
+    <img src="icon.svg" alt="" class="logo"><span><b>Flow</b>Lens</span>
   </div>
 
-  <div class="divider"></div>
-  <button id="openFolderBtn" class="primary" title="Open a native folder chooser on this machine — reads files from disk, nothing is uploaded">📁 Open project</button>
-  <input type="text" id="pathInput" placeholder="…or paste a project path" spellcheck="false">
-  <button id="indexPathBtn">Index path</button>
+  <div class="group">
+    <div class="menu" id="openMenu">
+      <button id="openBtn" class="primary" title="Open a project folder (Ctrl/⌘+O)">Open project</button>
+      <button class="primary caret" data-menu-toggle="openMenu" aria-label="Recent projects">▾</button>
+      <div class="menu-pop" role="menu">
+        <div class="menu-title">Recent projects</div>
+        <div id="recentList"><div class="menu-empty">None yet</div></div>
+        <hr>
+        <button data-action="open-snapshot" role="menuitem">Open snapshot (.flowlens)…</button>
+      </div>
+    </div>
+    <input type="text" id="pathInput" placeholder="…or paste a folder path" spellcheck="false" autocomplete="off">
+    <button id="indexBtn" title="Index the path">Index</button>
+    <button id="reindexBtn" class="icon" title="Re-index (Ctrl/⌘+R)" disabled>⟳</button>
+    <label class="toggle" title="Re-index automatically when source files change">
+      <input type="checkbox" id="watchToggle" disabled><span>Watch</span>
+    </label>
+    <div class="menu" id="optionsMenu">
+      <button data-menu-toggle="optionsMenu" title="Indexing options">Options ▾</button>
+      <div class="menu-pop">
+        <label class="menu-check"><input type="checkbox" id="optTests"> Include test sources</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="group">
+    <div class="menu" id="compareMenu">
+      <button data-menu-toggle="compareMenu" id="compareBtn" disabled title="Compare this flow with a git ref or a saved snapshot">Compare ▾</button>
+      <div class="menu-pop">
+        <button data-action="compare-ref">With a git branch / tag / commit…</button>
+        <button data-action="compare-snapshot">With a saved snapshot…</button>
+        <hr>
+        <button data-action="compare-exit" id="compareExit" disabled>Exit compare</button>
+      </div>
+    </div>
+    <div class="menu" id="exportMenu">
+      <button data-menu-toggle="exportMenu" id="exportBtn" disabled>Export ▾</button>
+      <div class="menu-pop">
+        <button data-action="export-png">PNG image (current view)</button>
+        <button data-action="export-svg">SVG image (current view)</button>
+        <button data-action="export-mermaid">Mermaid diagram (current view)</button>
+        <hr>
+        <button data-action="save-snapshot">Save snapshot (.flowlens)…</button>
+      </div>
+    </div>
+  </div>
 
   <div class="spacer"></div>
-  <label class="hint">Endpoint:
-    <select id="endpointSelect"><option value="__all__">All endpoints</option></select>
-  </label>
-  <div class="layers" id="layerFilters"></div>
-  <button id="dirBtn" title="Toggle layout direction (left→right / top→bottom)">Dir: →</button>
-  <button id="tidyBtn" title="Re-arrange the visible flow into a clean layout">Tidy</button>
-  <button id="fitBtn" title="Fit the graph to the screen">Fit</button>
+
+  <div class="group">
+    <div class="menu" id="layersMenu">
+      <button data-menu-toggle="layersMenu" title="Choose which kinds of nodes to show">Layers ▾</button>
+      <div class="menu-pop right layers" id="layerFilters" aria-label="Layers"></div>
+    </div>
+    <button id="dirBtn" class="icon" title="Layout direction">→</button>
+    <button id="tidyBtn" title="Re-arrange the visible flow">Tidy</button>
+    <button id="fitBtn" title="Fit to screen (F)">Fit</button>
+    <button id="themeBtn" class="icon" title="Theme: auto / light / dark">◐</button>
+    <div class="menu" id="helpMenu">
+      <button data-menu-toggle="helpMenu" class="icon" title="Help">?</button>
+      <div class="menu-pop right">
+        <button data-action="help-mcp">Connect AI agents (MCP)…</button>
+        <button data-action="help-shortcuts">Keyboard shortcuts</button>
+        <button data-action="help-about">About FlowLens</button>
+      </div>
+    </div>
+  </div>
 </header>
 
 <main>
-  <div id="cy"></div>
-  <aside id="panel">
-    <div class="empty">Open a project folder (or paste a path) to index it,<br>then click any node to see its
-      request data, branch conditions, mutations, and source.</div>
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-head">
+      <input type="search" id="searchInput" placeholder="Search…" spellcheck="false">
+      <select id="moduleSelect" hidden title="Module"></select>
+      <div class="tabs" role="tablist">
+        <button role="tab" class="tab active" data-tab="endpoints">Endpoints <span class="count" id="countEndpoints"></span></button>
+        <button role="tab" class="tab" data-tab="tables">Tables <span class="count" id="countTables"></span></button>
+        <button role="tab" class="tab" data-tab="issues">Issues <span class="count" id="countIssues"></span></button>
+      </div>
+    </div>
+    <div class="sidebar-body">
+      <div id="tab-endpoints" class="tab-body"><div class="empty">Open a project to list its endpoints.</div></div>
+      <div id="tab-tables" class="tab-body" hidden></div>
+      <div id="tab-issues" class="tab-body" hidden></div>
+    </div>
+  </aside>
+
+  <section class="canvas">
+    <div id="cy"></div>
+    <div id="banner" class="banner" hidden></div>
+    <div id="legend" class="legend"></div>
+    <canvas id="minimap" class="minimap" width="200" height="130" title="Minimap — click to move the view"></canvas>
+    <div id="welcome" class="welcome" hidden>
+      <h1>See how a request flows through your Java code</h1>
+      <p>Open a Java / Spring project folder. FlowLens reads the source on this machine — nothing is uploaded.</p>
+      <button class="primary big" data-action="open">Open project…</button>
+      <p class="hint">Tip: drop a folder onto this window.</p>
+    </div>
+    <div id="progress" class="progress-card" hidden>
+      <div class="progress-title" id="progressTitle">Indexing…</div>
+      <div class="bar"><div id="progressBar"></div></div>
+      <div class="progress-detail" id="progressDetail"></div>
+      <button id="cancelBtn">Cancel</button>
+    </div>
+  </section>
+
+  <aside id="panel" class="panel">
+    <div class="empty">Click a node to see its conditions, mutations, lineage and source.</div>
   </aside>
 </main>
-<footer id="stat">Ready.</footer>
 
-<script>
-const LAYER_COLOR = {
-  controller: getVar('--controller'), service: getVar('--service'),
-  repository: getVar('--repository'), db: getVar('--db-read'), other: getVar('--other')
-};
-const OP_COLOR = {
-  INSERT: getVar('--db-write'), UPSERT: getVar('--db-write'), UPDATE: getVar('--db-update'),
-  DELETE: getVar('--db-delete'), SELECT: getVar('--db-read'), CALL: getVar('--db-read')
-};
-function getVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
-function nodeColor(n){ return n.type === 'db' ? (OP_COLOR[n.op] || getVar('--db-read')) : (LAYER_COLOR[n.layer] || getVar('--other')); }
-function nodeShape(n){ return n.type === 'db' ? 'barrel' : 'round-rectangle'; }
+<footer>
+  <span id="status">Ready.</span>
+  <span class="spacer"></span>
+  <button id="issuesBadge" class="badge-btn" hidden></button>
+  <span id="versionLabel" class="muted"></span>
+</footer>
 
-let graph = null, cy = null;
-let layoutDir = 'LR';   // 'LR' = left→right, 'TB' = top→bottom
-const activeLayers = new Set(['controller','service','repository','db','other']);
-
-function layoutOpts(){
-  return { name: 'dagre', rankDir: layoutDir, nodeSep: 28, rankSep: 90, edgeSep: 12,
-           nodeDimensionsIncludeLabels: true, animate: false, fit: true, padding: 50 };
-}
-
-// --- data loading --------------------------------------------------------
-async function loadStaticGraph(){
-  for (const url of ['graph.json','graph.sample.json']){
-    try { const r = await fetch(url, {cache:'no-store'}); if (r.ok) return await r.json(); } catch(e){}
-  }
-  return null;
-}
-
-async function pickFolder(){
-  setStatus('Opening a folder chooser on this machine…');
-  try {
-    const r = await fetch('/api/pick', { method: 'POST' });
-    const data = await r.json();
-    if (!r.ok){ setStatus('Error: ' + (data.error || r.status)); return; }
-    if (data.cancelled){ setStatus('Folder selection cancelled.'); return; }
-    onGraph(data);
-  } catch(e){
-    setStatus('Cannot reach the FlowLens server. Start it with:  java -jar flowlens-analyzer.jar --serve');
-  }
-}
-
-async function indexPath(path){
-  if (!path || !path.trim()){ setStatus('Enter a project path first.'); return; }
-  setStatus('Indexing ' + path + ' …');
-  await postAnalyze({ path: path.trim() });
-}
-
-async function postAnalyze(payload){
-  try {
-    const r = await fetch('/api/analyze', {
-      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
-    });
-    const data = await r.json();
-    if (!r.ok){ setStatus('Error: ' + (data.error || r.status)); return; }
-    onGraph(data);
-  } catch(e){
-    setStatus('Cannot reach the FlowLens server. Start it with:  java -jar flowlens-analyzer.jar --serve');
-  }
-}
-
-// Shared handler for any analyze/pick response.
-function onGraph(data){
-  if (data.sourcePath) document.getElementById('pathInput').value = data.sourcePath;
-  if (!data.nodes || !data.nodes.length){ setStatus('No Spring endpoints found in that project.'); }
-  renderGraph(data);
-  const eps = data.nodes.filter(n => n.type==='endpoint').length;
-  const where = data.sourcePath ? ` (${data.sourcePath})` : '';
-  setStatus(`Indexed ${data.nodes.length} nodes · ${eps} endpoints · ${data.edges.length} edges${where}.`);
-}
-
-// --- rendering -----------------------------------------------------------
-function renderGraph(g){
-  graph = g;
-  if (cy){ cy.destroy(); cy = null; }
-  initCy(g);
-  buildEndpointSelect();
-  applyFilters();
-  cy.fit(null, 40);
-  updateFooter(g);
-}
-
-function buildElements(g){
-  const els = [];
-  for (const n of g.nodes) els.push({ data: { id: n.id, label: n.label, ...n } });
-  for (const e of g.edges) els.push({ data: { id: e.source+'|'+e.target+'|'+e.label, source: e.source, target: e.target, label: e.label } });
-  return els;
-}
-
-function initCy(g){
-  cy = cytoscape({
-    container: document.getElementById('cy'),
-    elements: buildElements(g),
-    wheelSensitivity: 0.2,
-    style: [
-      { selector: 'node', style: {
-        'background-color': ele => nodeColor(ele.data()),
-        'shape': ele => nodeShape(ele.data()),
-        'label': 'data(label)', 'color': '#fff', 'font-size': 11, 'font-weight': 600,
-        'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'wrap', 'text-max-width': 150,
-        'width': 'label', 'height': 'label', 'padding': '10px',
-        'border-width': 2, 'border-color': 'rgba(255,255,255,0.15)'
-      }},
-      { selector: 'node[type="endpoint"]', style: { 'border-width': 3, 'border-color': '#fff', 'font-size': 12 }},
-      { selector: 'node[type="db"]', style: { 'font-family': 'monospace' }},
-      { selector: 'edge', style: {
-        'width': 1.8, 'line-color': '#3a4660',
-        'target-arrow-color': '#4a5a80', 'target-arrow-shape': 'triangle',
-        'curve-style': 'bezier', 'label': 'data(label)', 'font-size': 9, 'color': '#93a1c0',
-        'text-background-color': '#0f1420', 'text-background-opacity': 0.85, 'text-background-padding': 2
-      }},
-      { selector: 'node:selected', style: { 'border-width': 4, 'border-color': '#fbbf24' }}
-    ],
-    layout: layoutOpts()
-  });
-  cy.on('tap', 'node', evt => showDetail(evt.target.data()));
-  cy.on('tap', evt => { if (evt.target === cy) clearDetail(); });
-}
-
-// Lay out ONLY the currently-visible nodes so a selected endpoint packs into a
-// clean flow, instead of keeping its scattered positions from the full graph.
-function relayout(){
-  if (!cy) return;
-  const vis = cy.elements(':visible');
-  (vis.length ? vis : cy.elements()).layout(layoutOpts()).run();
-}
-
-// --- filtering -----------------------------------------------------------
-function reachableFrom(id){
-  const seen = new Set([id]); const stack = [id]; const adj = {};
-  for (const e of graph.edges){ (adj[e.source] ||= []).push(e.target); }
-  while (stack.length){
-    const cur = stack.pop();
-    for (const nxt of (adj[cur]||[])) if (!seen.has(nxt)){ seen.add(nxt); stack.push(nxt); }
-  }
-  return seen;
-}
-function applyFilters(){
-  if (!cy) return;
-  const ep = document.getElementById('endpointSelect').value;
-  const reach = ep === '__all__' ? null : reachableFrom(ep);
-  cy.batch(() => {
-    cy.nodes().forEach(n => {
-      const d = n.data();
-      const ok = activeLayers.has(d.layer || 'other') && (!reach || reach.has(d.id));
-      n.style('display', ok ? 'element' : 'none');
-    });
-    cy.edges().forEach(e => {
-      const vis = e.source().style('display') !== 'none' && e.target().style('display') !== 'none';
-      e.style('display', vis ? 'element' : 'none');
-    });
-  });
-  relayout();
-}
-
-// --- side panel ----------------------------------------------------------
-function showDetail(n){
-  const parts = [`<h2>${esc(n.label)}</h2>`, `<div><span class="badge">${esc(n.type)}</span>`];
-  if (n.layer) parts.push(`<span class="badge">${esc(n.layer)}</span>`);
-  parts.push(`</div>`);
-  const meta = [];
-  if (n.http) meta.push(`<span class="http">${esc(n.http)}</span>`);
-  if (n.type === 'db') meta.push(`<span class="op" style="color:${nodeColor(n)}">${esc(n.op)}</span> → <b>${esc(n.table)}</b>`);
-  if (n.file) meta.push(`${esc(n.file)}${n.line ? ':'+n.line : ''}`);
-  if (meta.length) parts.push(`<div class="meta">${meta.join(' &nbsp;·&nbsp; ')}</div>`);
-  if (n.conditions && n.conditions.length)
-    parts.push(section('Branch conditions', n.conditions.map(c => `<li class="cond">${esc(c)}</li>`).join('')));
-  if (n.mutations && n.mutations.length)
-    parts.push(section('Mutations', n.mutations.map(m => `<li class="mut">${esc(m)}</li>`).join('')));
-  if (n.source)
-    parts.push(`<section class="detail"><div class="title">Source</div><pre class="source">${esc(n.source)}</pre></section>`);
-  if (n.type === 'db')
-    parts.push(`<p class="hint">Persistence sink resolved statically from the call above.</p>`);
-  document.getElementById('panel').innerHTML = parts.join('');
-}
-function section(title, inner){ return `<section class="detail"><div class="title">${esc(title)}</div><ul class="list">${inner}</ul></section>`; }
-function clearDetail(){
-  document.getElementById('panel').innerHTML =
-    '<div class="empty">Click a node to see its request data, conditions, mutations, and source.</div>';
-}
-function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
-// --- controls ------------------------------------------------------------
-function buildEndpointSelect(){
-  const sel = document.getElementById('endpointSelect');
-  sel.innerHTML = '<option value="__all__">All endpoints</option>';
-  graph.nodes.filter(n => n.type === 'endpoint').forEach(n => {
-    const o = document.createElement('option');
-    o.value = n.id; o.textContent = (n.http || n.label);
-    sel.appendChild(o);
-  });
-}
-function buildLayerFilters(){
-  const wrap = document.getElementById('layerFilters');
-  [['controller','Controller'],['service','Service'],['repository','Repository'],['db','DB'],['other','Other']]
-    .forEach(([key,label]) => {
-      const color = key === 'db' ? getVar('--db-write') : (LAYER_COLOR[key] || getVar('--other'));
-      const l = document.createElement('label');
-      l.innerHTML = `<input type="checkbox" checked data-layer="${key}"><span class="dot" style="background:${color}"></span>${label}`;
-      l.querySelector('input').addEventListener('change', e => {
-        e.target.checked ? activeLayers.add(key) : activeLayers.delete(key);
-        applyFilters();
-      });
-      wrap.appendChild(l);
-    });
-}
-function updateFooter(g){
-  const eps = g.nodes.filter(n => n.type==='endpoint').length;
-  const dbs = g.nodes.filter(n => n.type==='db').length;
-  document.getElementById('stat').textContent =
-    `${g.nodes.length} nodes · ${eps} endpoints · ${dbs} db sinks · ${g.edges.length} edges · ${g.generatedBy||''}`;
-}
-function setStatus(t){ document.getElementById('stat').textContent = t; }
-
-function wireControls(){
-  document.getElementById('openFolderBtn').onclick = pickFolder;
-  document.getElementById('indexPathBtn').onclick = () => indexPath(document.getElementById('pathInput').value);
-  document.getElementById('pathInput').addEventListener('keydown', e => { if (e.key === 'Enter') indexPath(e.target.value); });
-  document.getElementById('endpointSelect').onchange = applyFilters;
-  document.getElementById('fitBtn').onclick = () => cy && cy.fit(null, 40);
-  document.getElementById('tidyBtn').onclick = relayout;
-  document.getElementById('dirBtn').onclick = () => {
-    layoutDir = layoutDir === 'LR' ? 'TB' : 'LR';
-    document.getElementById('dirBtn').textContent = 'Dir: ' + (layoutDir === 'LR' ? '→' : '↓');
-    relayout();
-  };
-}
-
-// --- boot ----------------------------------------------------------------
-(async function main(){
-  cytoscape.use(cytoscapeDagre);
-  buildLayerFilters();
-  wireControls();
-  const g = await loadStaticGraph();
-  if (g){
-    renderGraph(g);
-    setStatus('Loaded sample graph. Open a project folder (or paste a path) to index your own code.');
-  } else {
-    setStatus('Open a project folder, or paste a path and Index. (Server started with --serve.)');
-  }
-})();
-</script>
+<dialog id="modal">
+  <form method="dialog" class="modal-body">
+    <div id="modalContent"></div>
+    <div class="modal-actions" id="modalActions"><button value="close" class="primary">Close</button></div>
+  </form>
+</dialog>
+<input type="file" id="fileInput" accept=".flowlens,.json" hidden>
 </body>
 </html>
