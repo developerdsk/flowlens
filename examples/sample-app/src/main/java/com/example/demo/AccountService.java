@@ -1,35 +1,12 @@
 package com.example.demo;
 
-import org.springframework.stereotype.Service;
+public interface AccountService {
 
-@Service
-public class AccountService {
+    Account create(CreateAccountRequest request);
 
-    private final AccountRepository accountRepository;
-    private final AuditService auditService;
+    Account find(Long id);
 
-    public AccountService(AccountRepository accountRepository, AuditService auditService) {
-        this.accountRepository = accountRepository;
-        this.auditService = auditService;
-    }
+    void changeStatus(Long id, String status);
 
-    public Account create(CreateAccountRequest request) {
-        if (accountRepository.existsByEmail(request.getEmail())) {
-            throw new IllegalStateException("email already registered");
-        }
-
-        Account account = new Account();
-        account.setEmail(request.getEmail());
-        account.setName(request.getName());
-
-        if (request.getName() != null && request.getName().length() > 2) {
-            account.setStatus("ACTIVE");
-        } else {
-            account.setStatus("PENDING");
-        }
-
-        Account saved = accountRepository.save(account);
-        auditService.record("account.created", saved.getId());
-        return saved;
-    }
+    void close(Long id);
 }
