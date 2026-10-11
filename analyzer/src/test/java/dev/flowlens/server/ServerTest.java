@@ -117,7 +117,7 @@ class ServerTest {
         Response r = raw(port, "POST", "/api/analyze", "127.0.0.1:" + port, null, "application/json", null, "{bad");
         assertEquals(400, r.code());
         assertTrue(r.json().get("error").asText().startsWith("Invalid JSON"));
-        Response missing = raw(port, "POST", "/api/analyze", "127.0.0.1:" + port, null, "application/json", null, "{\"path\":\"/definitely/not/here\"}");
+        Response missing = raw(port, "POST", "/api/analyze", "127.0.0.1:" + port, null, "application/json", null, pathJson(dir.resolve("definitely-not-here")));
         assertEquals(400, missing.code());
         assertTrue(missing.json().get("error").asText().contains("does not exist"));
         Response relative = raw(port, "POST", "/api/analyze", "127.0.0.1:" + port, null, "application/json", null, "{\"path\":\"relative/dir\"}");

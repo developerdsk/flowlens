@@ -37,6 +37,7 @@ class SampleAppGoldenTest {
             Files.createDirectories(golden.getParent());
             Files.writeString(golden, actual, StandardCharsets.UTF_8);
         }
-        assertEquals(Files.readString(golden, StandardCharsets.UTF_8), actual);
+        // git may check the golden file out with CRLF line endings on Windows
+        assertEquals(Files.readString(golden, StandardCharsets.UTF_8).replace("\r\n", "\n"), actual);
     }
 }

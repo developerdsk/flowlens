@@ -95,7 +95,7 @@ public class Server {
                 break;
             } catch (BindException e) {
                 last = e;
-                if (attempts > 1) System.err.println("Port " + (port + i) + " is in use, trying " + (port + i + 1) + "…");
+                if (attempts > 1) System.err.println("Port " + (port + i) + " is in use, trying " + (port + i + 1) + "...");
             }
         }
         if (server == null) {
