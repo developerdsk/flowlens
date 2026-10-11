@@ -1,0 +1,158 @@
+# Builds installable desktop apps and attaches them to a draft GitHub Release.
+#
+#   git tag v0.2.0 && git push origin v0.2.0      (or run it manually from the Actions tab)
+#
+# Unsigned by default. Add these repository secrets to switch signing on:
+#   macOS (Developer ID + notarization):
+#     APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+#     APPLE_ID, APPLE_PASSWORD (app-specific password), APPLE_TEAM_ID
+#   Windows (Authenticode, .pfx):
+#     WINDOWS_CERTIFICATE (base64 .pfx), WINDOWS_CERTIFICATE_PASSWORD
+#   Auto-update (Tauri updater signatures, see desktop/README.md):
+#     TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+name: Release desktop apps
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+            java-arch: x64
+          - name: macOS Apple Silicon
+            os: macos-14
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+            java-arch: aarch64
+          - name: macOS Intel
+            # GitHub's Intel macOS runner. If it is retired, build on macos-14 instead with
+            # target x86_64-apple-darwin and FLOWLENS_JMODS pointing at an x64 JDK's jmods.
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            bundles: app,dmg
+            java-arch: x64
+          - name: Linux x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb
+            java-arch: x64
+    runs-on: ${{ matrix.os }}
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          architecture: ${{ matrix.java-arch }}
+          cache: maven
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev patchelf
+
+      - name: Test engine
+        shell: bash
+        working-directory: analyzer
+        run: ./mvnw -B verify
+
+      - name: Build engine (jar + minimal Java runtime)
+        shell: bash
+        working-directory: desktop
+        run: |
+          npm ci --no-audit --no-fund
+          SKIP_JAR=1 node scripts/build-engine.mjs
+
+      - name: Sign the bundled Java runtime (macOS)
+        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
+        working-directory: desktop
+        env:
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: bash scripts/macos-sign-runtime.sh
+
+      - name: Windows code-signing certificate
+        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        working-directory: desktop
+        env:
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: ./scripts/windows-signing.ps1
+
+      - name: Choose optional features
+        id: features
+        shell: bash
+        working-directory: desktop
+        run: |
+          args="--target ${{ matrix.target }} --bundles ${{ matrix.bundles }}"
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && ! grep -q REPLACE_WITH src-tauri/tauri.updater.conf.json; then
+            args="$args --features updater --config src-tauri/tauri.updater.conf.json"
+            echo "updater=true" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -f src-tauri/tauri.windows-signing.conf.json ]; then
+            args="$args --config src-tauri/tauri.windows-signing.conf.json"
+          fi
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+
+      - name: Build and upload installers
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Linux AppImage: lets linuxdeploy resolve the bundled JRE's own libraries (libjvm.so)
+          LD_LIBRARY_PATH: ${{ github.workspace }}/desktop/src-tauri/engine/runtime/lib/server:${{ github.workspace }}/desktop/src-tauri/engine/runtime/lib
+        with:
+          projectPath: desktop
+          tauriScript: npx tauri
+          args: ${{ steps.features.outputs.args }}
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}-dev', github.run_number) }}
+          releaseName: 'FlowLens ${{ github.ref_type == ''tag'' && github.ref_name || ''dev build'' }}'
+          releaseBody: |
+            Download the installer for your computer:
+            - **Windows**: `FlowLens_*_x64-setup.exe` (or the `.msi`)
+            - **Mac with Apple Silicon (M1–M4)**: `FlowLens_*_aarch64.dmg`
+            - **Mac with Intel**: `FlowLens_*_x64.dmg`
+            - **Linux**: `.AppImage` or `.deb`
+
+            No Java installation is needed. See the README for first-launch notes on unsigned builds.
+          releaseDraft: true
+          prerelease: ${{ github.ref_type != 'tag' }}
+          includeUpdaterJson: ${{ steps.features.outputs.updater == 'true' }}

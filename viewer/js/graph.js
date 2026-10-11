@@ -137,7 +137,8 @@ export class FlowGraph {
   elements() {
     const els = [];
     for (const n of this.graph.nodes) {
-      const display = n.type === 'endpoint' && n.http ? `${n.http}\n${n.label}` : n.label;
+      let display = n.type === 'endpoint' && n.http ? `${n.http}\n${n.label}` : n.label;
+      if ((n.type === 'branch' || n.type === 'throw') && display.length > 46) display = display.slice(0, 44) + '…';
       const { w, h } = sizeOf(display, n.type);
       els.push({
         group: 'nodes',

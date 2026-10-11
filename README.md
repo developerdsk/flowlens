@@ -1,103 +1,98 @@
 # FlowLens
 
-**See how a request actually flows through your Java code — from an HTTP endpoint down to the database write.**
+**See how a request actually flows through your Java code — from the endpoint down to the database write.**
 
-FlowLens statically analyzes a Java / Spring source tree and, for each REST endpoint,
-builds a **data-flow graph**: the controller entry point, the chain of service and
-repository calls, the branch conditions and object mutations along the way, and the
-concrete persistence sink (the `INSERT` / `UPDATE` / `DELETE` and the table it hits).
+FlowLens statically analyzes a Java / Spring source tree and, for every entry point (HTTP endpoint,
+message listener, scheduled job), builds a **data-flow graph**: the call chain through services and
+repositories (including through interfaces), the branch conditions and throws along the way, and the
+concrete sinks it reaches — `INSERT` / `UPDATE` / `DELETE` / `SELECT` on which table, which HTTP
+service, which Kafka topic. It also traces which request field ends up in which column.
 
-It reads **source only** — no build, no running app, no instrumentation required.
+It reads **source only** — no build, no running app, no instrumentation. Nothing leaves your machine.
 
-## Why
+## Install
 
-AI now writes a large and growing share of enterprise code. The bottleneck has shifted
-from *writing* code to *understanding* it: reviewers and engineers struggle to follow
-what a change actually does across controller → service → repository → database.
-Runtime tracers (Jaeger, Zipkin, OpenTelemetry) need a running, instrumented app and
-show spans, not statements. Structure tools (jQAssistant, Sourcetrail) show class/method
-edges, not how the request data flows and mutates.
+Download the installer for your computer from the
+[latest release](https://github.com/developerdsk/flowlens/releases):
 
-FlowLens fills that gap: a **static, per-endpoint, request-scoped data-flow graph** you
-can generate from any checkout and read in the browser.
+| Computer | File |
+|---|---|
+| Windows 10/11 | `FlowLens_<version>_x64-setup.exe` (or `.msi`) |
+| Mac with Apple Silicon (M1–M4) | `FlowLens_<version>_aarch64.dmg` |
+| Mac with Intel | `FlowLens_<version>_x64.dmg` |
+| Linux | `.AppImage` or `.deb` |
+
+No Java needed — the app bundles its own runtime. Then **Open project…**, pick a folder, done.
+
+> Until the builds are code-signed: on macOS right-click the app → **Open** the first time; on
+> Windows choose **More info → Run anyway** in the SmartScreen prompt.
+
+## What you get
+
+- **Endpoint explorer** — every entry point grouped by class, like a Postman collection; search.
+- **Flow graph** — controller → services → repositories → tables / HTTP / topics, with `if`/`switch`
+  branches and throws as nodes; dashed edges where FlowLens is unsure.
+- **Tables view** — pick a table and see every endpoint that reads or writes it.
+- **Detail panel** — field lineage (`request.email → account.email_address`), SQL, conditions,
+  mutations, callers/callees, highlighted source, **Open in VS Code / IntelliJ / Cursor**.
+- **Compare** — diff the flow against a git branch or a saved snapshot; affected endpoints light up.
+- **Watch mode**, export to **PNG / SVG / Mermaid**, shareable **.flowlens** snapshots.
+- **MCP server** — let AI coding agents ask "what writes to the `account` table?"
+  (Help → *Connect AI Agents*).
+
+### Supported frameworks
+
+| | |
+|---|---|
+| Entry points | Spring MVC & WebFlux (annotated and router functions, mappings inherited from OpenAPI-generated interfaces), JAX-RS / Quarkus / Jakarta EE, Micronaut, Kafka / RabbitMQ / JMS / SQS / Spring Cloud Stream listeners, `@Scheduled`, Quartz |
+| Data access | Spring Data (JPA, JDBC, R2DBC, MongoDB, …) incl. `@Query` and derived queries, JPA `EntityManager` / Hibernate `Session`, `JdbcTemplate`, `JdbcClient`, MyBatis (XML + annotations, MyBatis-Plus), jOOQ, `MongoTemplate`, Redis |
+| Outbound | OpenFeign, Spring `@HttpExchange`, MicroProfile REST client, `RestTemplate`, `WebClient`, `RestClient`, Kafka / RabbitMQ / JMS / Stream / SQS / SNS producers, Spring application events |
+| Java | up to Java 21 syntax; multi-module Maven/Gradle; non-UTF-8 sources |
 
 ## How it works
 
 ```
-  Java source tree
-        │
-        ▼
-  ┌───────────────┐   JavaParser + SymbolSolver
-  │   analyzer/   │   • detect @RestController endpoints
-  │  (Java/Maven) │   • walk the call chain (service → repo)
-  │               │   • capture if/switch conditions & field mutations
-  │               │   • resolve Spring Data / JPA / JDBC sinks → table + op
-  └───────┬───────┘
-          │  graph.json
-          ▼
-  ┌───────────────┐   Cytoscape.js single-page app
-  │    viewer/    │   • hierarchical layout of the flow
-  │  (static web) │   • click a node → see code, mutations, conditions
-  │               │   • filter by layer (controller/service/repo/db)
-  └───────────────┘
+  Java sources ──► engine (analyzer/, Java)            ──► graph.json ──► viewer (viewer/, JS)
+                   JavaParser + FlowLens type resolver                     Cytoscape UI
+                   entry points → call walk → sinks                        in the desktop app
+                   lineage, diff, MCP, local API                           or a browser
 ```
 
-## Quick start
+The desktop app (`desktop/`, Tauri 2) bundles the engine with a minimal Java runtime and talks to it
+over a token-protected loopback connection.
 
-You only need **Java 17+** and (for the first build) **Maven**.
+## Other ways to run it
+
+Needs Java 17+.
 
 ```bash
-# macOS / Linux
-./run.sh
+./run.sh            # macOS / Linux: builds once, then opens http://localhost:7070
+run.bat             # Windows
 ```
-```bat
-:: Windows
-run.bat
-```
-
-This builds the analyzer (first run only) and starts the viewer at
-**http://localhost:7070**. Then, in the browser:
-
-- Click **📁 Open project** — a native folder chooser opens **on your machine**. Pick
-  any Java/Spring folder and the analyzer reads it **directly from disk**. Nothing is
-  uploaded anywhere; everything runs locally.
-- …or paste a **project path** and click **Index path** (same thing, without the dialog).
-
-That's the whole workflow — pick a folder, see the flow. To hand it to a teammate,
-give them the built `analyzer/target/flowlens-analyzer.jar` and have them run
-`java -jar flowlens-analyzer.jar --serve` (Java 17+, no Maven needed).
-
-### CLI (one-shot, no server)
 
 ```bash
-cd analyzer && mvn -q package
-java -jar target/flowlens-analyzer.jar ../examples/sample-app ../viewer/graph.json
-# then serve viewer/ statically and open index.html
+cd analyzer && ./mvnw -DskipTests package
+java -jar target/flowlens-analyzer.jar <project> graph.json          # one-shot JSON
+java -jar target/flowlens-analyzer.jar <project> --ref main          # analyze a git ref
+java -jar target/flowlens-analyzer.jar --diff base.json head.json     # what changed
+java -jar target/flowlens-analyzer.jar --mcp <project>                # MCP server on stdio
+claude mcp add flowlens -- java -jar /path/flowlens-analyzer.jar --mcp /path/to/project
 ```
 
-### Privacy / safety
+### Privacy & safety
 
-The `--serve` server binds to **127.0.0.1 only**. The "Index path" option reads files
-from disk on the machine running the server, so never expose it to a network.
+The engine binds to **127.0.0.1 only**, rejects requests whose `Host`/`Origin` isn't itself (no DNS
+rebinding or cross-site use), accepts only JSON posts, and in the desktop app requires a per-launch
+secret. It never executes or loads the analyzed code. No telemetry.
 
-## Status
+## Development
 
-Early MVP. Working today:
-
-- **Point-and-index UI**: native folder chooser or a path box — reads from disk, no upload, no CLI needed
-- Single-jar local server (`--serve`), viewer bundled inside; works on Windows & macOS
-- Spring MVC endpoint detection (`@GetMapping`/`@PostMapping`/`@RequestMapping`, etc.)
-- Inter-procedural call-chain walk across project classes (cycle-guarded)
-- Spring Data repository sink classification (`save`→UPSERT, `deleteBy…`→DELETE, `find…`→SELECT)
-- `@Query` / JPQL / native SQL and `JdbcTemplate` sink resolution (op + table via regex)
-- Per-method capture of `if`/`switch` conditions and field/setter mutations
-- Interactive Cytoscape viewer with per-node detail
+See [CONTRIBUTING.md](CONTRIBUTING.md), [desktop/README.md](desktop/README.md) (building and releasing
+installers), [docs/QA-CHECKLIST.md](docs/QA-CHECKLIST.md) and [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md). Next up: branch conditions as first-class graph nodes,
-MyBatis mapper support, interface→implementation resolution, and an MCP server so AI
-agents can query the flow graph directly.
+See [ROADMAP.md](ROADMAP.md) and [TODO.md](TODO.md).
 
 ## License
 

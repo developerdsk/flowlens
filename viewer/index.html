@@ -38,6 +38,9 @@
       <button data-menu-toggle="optionsMenu" title="Indexing options">Options ▾</button>
       <div class="menu-pop">
         <label class="menu-check"><input type="checkbox" id="optTests"> Include test sources</label>
+        <label class="menu-check desktop-only" hidden title="Maximum memory for the analysis engine (large monorepos need more)">Engine memory
+          <select id="optHeap"><option value="">Auto</option><option value="2048">2 GB</option><option value="4096">4 GB</option><option value="8192">8 GB</option><option value="16384">16 GB</option></select>
+        </label>
       </div>
     </div>
   </div>

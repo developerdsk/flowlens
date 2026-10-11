@@ -32,3 +32,7 @@ desktop/node_modules/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
 build/
+desktop/dist/
+desktop/src-tauri/engine/*
+!desktop/src-tauri/engine/.gitkeep
+desktop/src-tauri/tauri.windows-signing.conf.json

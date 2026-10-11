@@ -1,0 +1,23 @@
+name: Missed or wrong flow
+description: FlowLens missed a call, endpoint or database access — or showed a wrong one
+labels: [analysis]
+body:
+  - type: textarea
+    id: code
+    attributes:
+      label: Minimal code
+      description: The smallest classes that show the problem (controller → service → repository is often enough).
+      render: java
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected flow
+      placeholder: "POST /orders -> OrderServiceImpl.place() -> INSERT orders"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What FlowLens shows

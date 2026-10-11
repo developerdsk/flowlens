@@ -1,6 +1,6 @@
 // FlowLens viewer — wires the toolbar, sidebar, graph, detail panel, and desktop integration.
 import { $, $$, esc, debounce, basename, modKey } from './util.js';
-import { api, runJob, engineInfo, isDesktop } from './api.js';
+import { api, runJob, engineInfo, isDesktop, invoke } from './api.js';
 import { loadState, saveState, getState, addRecent } from './state.js';
 import { FlowGraph, LAYERS } from './graph.js';
 import { Sidebar } from './sidebar.js';
@@ -43,6 +43,10 @@ let flow, sidebar, detail, minimap;
   if (Array.isArray(state.layers)) flow.layers = new Set(state.layers);
   $('#dirBtn').textContent = flow.dir === 'LR' ? '→' : '↓';
   $('#optTests').checked = !!state.includeTests;
+  if (isDesktop) {
+    $$('.desktop-only').forEach(el => { el.hidden = false; });
+    $('#optHeap').value = state.maxHeapMb ? String(state.maxHeapMb) : '';
+  }
 
   sidebar = new Sidebar({
     onAll: () => showAll(),
@@ -400,6 +404,13 @@ function wireToolbar() {
   $('#cancelBtn').onclick = () => app.job.cancel && app.job.cancel();
   $('#watchToggle').onchange = e => setWatch(e.target.checked);
   $('#optTests').onchange = e => saveState({ includeTests: e.target.checked });
+  $('#optHeap').onchange = async e => {
+    saveState({ maxHeapMb: e.target.value ? Number(e.target.value) : null });
+    status('Restarting the analysis engine…');
+    await new Promise(r => setTimeout(r, 400)); // let the state file be written first
+    try { await invoke('restart_engine'); status('Engine restarted with the new memory limit.'); }
+    catch (err) { status('Could not restart the engine: ' + err); }
+  };
   $('#fitBtn').onclick = () => flow.fit();
   $('#tidyBtn').onclick = () => flow.relayout();
   $('#dirBtn').onclick = () => {
@@ -469,6 +480,8 @@ function wireKeyboard() {
   window.addEventListener('keydown', e => {
     const mod = e.ctrlKey || e.metaKey;
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
+    // in the desktop app the native menu owns these accelerators
+    if (isDesktop && mod && ['o', 'r', 'f', 's', 'b', '0'].includes(e.key.toLowerCase())) return;
     if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); openProject(); }
     else if (mod && e.key.toLowerCase() === 'r') { e.preventDefault(); runAction('reindex'); }
     else if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); runAction('find'); }
@@ -488,6 +501,9 @@ function wireDesktop() {
   });
   platform.onOpenPaths(paths => handleDropped(paths));
   platform.onEngineEvent(ev => status(ev.message || String(ev)));
+  if (isDesktop) {
+    invoke('engine_error').then(err => { if (err) showModal(`<h3>The analysis engine could not start</h3><p>${esc(err)}</p>`, [['logs', 'Open logs folder'], ['close', 'Close', true]]).then(v => { if (v === 'logs') platform.openLogs(); }); });
+  }
   platform.onDrop(paths => handleDropped(paths), files => {
     const f = files[0];
     if (f && /\.(flowlens|json)$/i.test(f.name)) f.text().then(text => openSnapshot({ name: f.name, text }));

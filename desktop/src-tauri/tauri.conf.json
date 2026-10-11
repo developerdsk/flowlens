@@ -1,0 +1,78 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "FlowLens",
+  "version": "0.2.0",
+  "identifier": "dev.flowlens.app",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeDevCommand": "node scripts/prepare.mjs",
+    "beforeBuildCommand": "node scripts/prepare.mjs"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "FlowLens",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 600,
+        "center": true,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi", "app", "dmg", "appimage", "deb"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "engine/": "engine/"
+    },
+    "category": "DeveloperTool",
+    "shortDescription": "See how a request flows through your Java code",
+    "longDescription": "FlowLens statically analyzes Java / Spring source and shows, for every endpoint, the call chain, branch conditions, and the database tables, HTTP services and message topics it reaches. Everything runs locally.",
+    "publisher": "FlowLens",
+    "copyright": "Copyright © FlowLens contributors. Apache-2.0.",
+    "homepage": "https://github.com/developerdsk/flowlens",
+    "license": "Apache-2.0",
+    "fileAssociations": [
+      {
+        "ext": ["flowlens"],
+        "name": "FlowLens snapshot",
+        "description": "FlowLens flow graph snapshot",
+        "mimeType": "application/x-flowlens",
+        "role": "Viewer"
+      }
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "entitlements": "entitlements.plist",
+      "hardenedRuntime": true
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      },
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    },
+    "linux": {
+      "deb": {
+        "section": "devel"
+      }
+    }
+  }
+}

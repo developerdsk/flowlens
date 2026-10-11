@@ -35,7 +35,8 @@ export function getState() { return state; }
 
 export function addRecent(path) {
   const recent = [path, ...state.recent.filter(p => p !== path)].slice(0, 10);
+  const changed = recent.join('\n') !== state.recent.join('\n');
   saveState({ recent });
-  if (isDesktop) invoke('set_recent', { paths: recent }).catch(() => {});
+  if (isDesktop && changed) invoke('set_recent', { paths: recent }).catch(() => {});
   return recent;
 }

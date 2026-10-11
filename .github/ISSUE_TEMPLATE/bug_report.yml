@@ -1,0 +1,30 @@
+name: Bug report
+description: Something in FlowLens doesn't work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options: [Desktop app, Browser mode (--serve), CLI, MCP server]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: FlowLens version and OS
+      placeholder: "0.2.0 on macOS 15 (Apple Silicon)"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Desktop app → Help → Open Logs Folder → attach engine.log / flowlens.log (remove anything private).
