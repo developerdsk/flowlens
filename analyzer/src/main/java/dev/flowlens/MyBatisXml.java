@@ -93,9 +93,14 @@ class MyBatisXml {
             if (k.getNodeType() == Node.TEXT_NODE || k.getNodeType() == Node.CDATA_SECTION_NODE) {
                 sb.append(k.getNodeValue()).append(' ');
             } else if (k instanceof Element el) {
-                if ("include".equals(el.getTagName())) {
+                String tag = el.getTagName();
+                if ("include".equals(tag)) {
                     sb.append(fragments.getOrDefault(el.getAttribute("refid"), "")).append(' ');
                 } else {
+                    // dynamic SQL elements that stand for keywords: <set>, <where>, <trim prefix="...">
+                    if ("set".equals(tag)) sb.append(" SET ");
+                    else if ("where".equals(tag)) sb.append(" WHERE ");
+                    else if ("trim".equals(tag) && !el.getAttribute("prefix").isEmpty()) sb.append(' ').append(el.getAttribute("prefix")).append(' ');
                     sb.append(text(el, fragments)).append(' ');
                 }
             }

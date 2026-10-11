@@ -85,7 +85,9 @@ jobs:
       - name: Test engine
         shell: bash
         working-directory: analyzer
-        run: ./mvnw -B verify
+        run: |
+          ./mvnw -v || (sleep 15 && ./mvnw -v)
+          ./mvnw -B verify
 
       - name: Build engine (jar + minimal Java runtime)
         shell: bash

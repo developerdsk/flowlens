@@ -94,6 +94,7 @@ class SinksTest {
                         @org.apache.ibatis.annotations.Mapper
                         public interface UserMapper {
                             int insertUser(Object u);
+                            int updateUser(Object u);
                             @org.apache.ibatis.annotations.Delete("DELETE FROM users WHERE id = #{id}") int remove(Long id);
                         }
                         """)
@@ -103,12 +104,14 @@ class SinksTest {
                         <mapper namespace="demo.UserMapper">
                           <sql id="cols">id, name</sql>
                           <insert id="insertUser">INSERT INTO users (<include refid="cols"/>) VALUES (#{id}, #{name})</insert>
+                          <update id="updateUser">update users <set><if test="name != null">name = #{name},</if></set> where id = #{id}</update>
+                          <update id="touch">update <trim prefix="" suffix="">users_audit</trim> <set>at = now()</set></update>
                         </mapper>
                         """)
                 .java("demo/C.java", "package demo; @org.springframework.web.bind.annotation.RestController public class C { UserMapper m;\n"
-                        + endpoint("/u", "m.insertUser(null); m.remove(1L);") + "}")
+                        + endpoint("/u", "m.insertUser(null); m.remove(1L); m.updateUser(null);") + "}")
                 .analyze();
-        assertEquals(List.of("DELETE users", "INSERT users"), r.flowOf("POST /u"));
+        assertEquals(List.of("DELETE users", "INSERT users", "UPDATE users"), r.flowOf("POST /u"));
         assertEquals("mybatis", r.node("INSERT users").tech);
     }
 

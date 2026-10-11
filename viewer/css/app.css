@@ -248,3 +248,5 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--panel2); }
 table.keys td { padding: 3px 12px 3px 0; }
 ul.list li.nav small { display: block; color: var(--muted); font-size: 11px; }
+.banner > * { white-space: nowrap; }
+.banner { max-width: calc(100% - 40px); flex-wrap: wrap; justify-content: center; }
