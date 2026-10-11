@@ -27,6 +27,16 @@ cd ../desktop && npm ci && npm run dev       # desktop app (see desktop/README.m
 - Keep the viewer dependency-free (vendored libs only) so it works offline and in the desktop app.
 - Bump the version only in `analyzer/pom.xml`; everything else reads it from there.
 
+## README screenshots and video
+`viewer/tests/capture-media.mjs` regenerates everything in `docs/images/` from the real UI
+(needs Playwright's Chromium and ffmpeg with libx264):
+
+```bash
+git clone --depth 1 https://github.com/macrozheng/mall /tmp/mall
+cp -r examples/sample-app /tmp/shop-service && git -C /tmp/shop-service init -q && git -C /tmp/shop-service add . && git -C /tmp/shop-service commit -qm base
+cd viewer && npm install && node tests/capture-media.mjs /tmp/shop-service /tmp/mall ../docs/images
+```
+
 ## Reporting analysis gaps
 Open an issue with the "Missed flow" template and a minimal code sample: what FlowLens shows, and
 what you expected. Small examples become test fixtures.
