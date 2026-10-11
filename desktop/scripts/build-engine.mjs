@@ -9,7 +9,7 @@
 //                      Must be the same JDK version as JAVA_HOME.
 //   SKIP_JAR=1         reuse analyzer/target/flowlens-analyzer.jar
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, rmSync, mkdirSync, copyFileSync, readdirSync, lstatSync, readlinkSync, unlinkSync, cpSync, statSync } from 'node:fs';
+import { existsSync, rmSync, mkdirSync, copyFileSync, readdirSync, lstatSync, readlinkSync, unlinkSync, cpSync, statSync, chmodSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -79,6 +79,16 @@ run(bin('jlink'), args, { stdio: 'inherit' });
       if (existsSync(target) && statSync(target).isDirectory()) cpSync(target, p, { recursive: true });
       else if (existsSync(target)) copyFileSync(target, p);
     } else if (st.isDirectory()) deref(p);
+  }
+})(join(out, 'runtime'));
+
+// jlink makes some files read-only; Tauri re-copies resources on every build and would fail
+(function writable(dir) {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    const st = lstatSync(p);
+    chmodSync(p, st.mode | 0o200);
+    if (st.isDirectory()) writable(p);
   }
 })(join(out, 'runtime'));
 

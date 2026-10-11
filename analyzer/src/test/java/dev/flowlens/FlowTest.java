@@ -241,4 +241,31 @@ class FlowTest {
                 .analyze();
         assertEquals(List.of("mystery.doThing()"), r.endpoint("GET /u").unresolved);
     }
+
+    @Test
+    void myBatisGeneratorQueryBuildersAreNotFlowSteps() throws Exception {
+        TestProject.Result r = new TestProject(dir)
+                .java("demo/OrderExample.java", """
+                        package demo;
+                        public class OrderExample {
+                            public Criteria createCriteria() { return new Criteria(); }
+                            public static class GeneratedCriteria { public Criteria andIdEqualTo(Long id) { return null; } }
+                            public static class Criteria extends GeneratedCriteria {}
+                        }
+                        """)
+                .java("demo/OrderMapper.java", "package demo; @org.apache.ibatis.annotations.Mapper public interface OrderMapper { java.util.List<Object> selectByExample(OrderExample e); }")
+                .java("demo/C.java", """
+                        package demo;
+                        @org.springframework.web.bind.annotation.RestController
+                        public class C { OrderMapper mapper;
+                            @org.springframework.web.bind.annotation.GetMapping("/o") public Object o() {
+                                OrderExample example = new OrderExample();
+                                example.createCriteria().andIdEqualTo(1L);
+                                return mapper.selectByExample(example);
+                            }
+                        }
+                        """)
+                .analyze();
+        assertEquals(List.of("SELECT order"), r.flowOf("GET /o"));
+    }
 }

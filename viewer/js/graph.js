@@ -119,7 +119,7 @@ export class FlowGraph {
       elements: this.elements(),
       style: this.style(),
       layout: { name: 'preset' },
-      minZoom: 0.05,
+      minZoom: 0.01,
       maxZoom: 3,
     });
     this.cy.on('tap', 'node', evt => this.handlers.onSelect?.(evt.target.data('raw')));
@@ -140,8 +140,11 @@ export class FlowGraph {
       let display = n.type === 'endpoint' && n.http ? `${n.http}\n${n.label}` : n.label;
       if ((n.type === 'branch' || n.type === 'throw') && display.length > 46) display = display.slice(0, 44) + '…';
       const { w, h } = sizeOf(display, n.type);
+      const i = els.length;
       els.push({
         group: 'nodes',
+        // distinct start positions: overlapping nodes trip Cytoscape's edge geometry before layout
+        position: { x: (i % 40) * 220, y: Math.floor(i / 40) * 90 },
         data: { id: n.id, display, w, h, type: n.type, op: n.op, confidence: n.confidence, diff: n.diff, layerKey: layerOf(n), raw: n },
       });
     }
@@ -200,10 +203,10 @@ export class FlowGraph {
         'border-width': 1.5, 'border-color': 'rgba(255,255,255,0.18)',
       } },
       { selector: 'node[type="endpoint"]', style: { 'border-width': 3, 'border-color': v('--text'), 'font-size': 12 } },
-      { selector: 'node[type="branch"]', style: { 'shape': 'round-diamond', 'font-size': 10 } },
-      { selector: 'node[type="throw"]', style: { 'shape': 'round-tag', 'font-size': 10 } },
+      { selector: 'node[type="branch"]', style: { 'shape': 'diamond', 'font-size': 10 } },
+      { selector: 'node[type="throw"]', style: { 'shape': 'tag', 'font-size': 10 } },
       { selector: 'node[type="db"]', style: { 'shape': 'barrel', 'font-family': 'ui-monospace, Menlo, Consolas, monospace' } },
-      { selector: 'node[type="external"]', style: { 'shape': 'round-hexagon', 'font-family': 'ui-monospace, Menlo, Consolas, monospace' } },
+      { selector: 'node[type="external"]', style: { 'shape': 'hexagon', 'font-family': 'ui-monospace, Menlo, Consolas, monospace' } },
       { selector: 'node[confidence="low"]', style: { 'border-style': 'dashed', 'border-width': 2.5, 'border-color': v('--db-update') } },
       { selector: 'edge', style: {
         'width': 1.6, 'line-color': v('--edge'), 'target-arrow-color': v('--edge-arrow'), 'target-arrow-shape': 'triangle',

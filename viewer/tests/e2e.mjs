@@ -3,7 +3,7 @@
 // Set CHROMIUM_PATH to use a specific Chromium (otherwise Playwright's managed browser is used).
 import { chromium } from 'playwright-core';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, cpSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { mkdtempSync, cpSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -119,6 +119,33 @@ try {
     appendFileSync(join(project, 'src/main/java/com/example/demo/AccountController.java'), '\n// touched\n');
     await waitStatus(/Re-indexed sample-app/);
     await page.uncheck('#watchToggle');
+  });
+
+  await step('large project (800+ nodes, branches, loops) renders', async () => {
+    // regression: Cytoscape's rounded shapes crashed on big graphs before layout
+    const big = join(work, 'big/src/main/java/big');
+    mkdirSync(big, { recursive: true });
+    for (let i = 0; i < 90; i++) {
+      writeFileSync(join(big, `S${i}.java`), `package big;
+        @org.springframework.stereotype.Service public class S${i} {
+          Repo repo; S${(i + 1) % 90} next;
+          public void run(int n) { if (n > ${i}) { repo.save(null); } else { for (int k = 0; k < n; k++) { repo.deleteById(1L); } }
+            switch (n) { case 1 -> repo.findAll(); default -> next.run(n - 1); }
+            try { repo.count(); } catch (RuntimeException e) { throw new IllegalStateException(e); } } }`);
+      writeFileSync(join(big, `C${i}.java`), `package big;
+        @org.springframework.web.bind.annotation.RestController public class C${i} { S${i} s;
+          @org.springframework.web.bind.annotation.PostMapping("/c${i}") public void c(int n) { if (n > 0) s.run(n); } }`);
+    }
+    writeFileSync(join(big, 'E.java'), 'package big; @jakarta.persistence.Entity public class E { @jakarta.persistence.Id Long id; }');
+    writeFileSync(join(big, 'Repo.java'), 'package big; public interface Repo extends org.springframework.data.jpa.repository.JpaRepository<E, Long> {}');
+    await page.fill('#pathInput', join(work, 'big'));
+    await page.click('#indexBtn');
+    await waitStatus(/Indexed big/);
+    const nodes = await page.evaluate(() => window.flowlens.flow.graph.nodes.length);
+    assert.ok(nodes > 700, 'nodes: ' + nodes);
+    await page.click('.tab[data-tab="endpoints"]');
+    await page.click('[data-all]');
+    await page.waitForTimeout(500);
   });
 
   await step('no console errors', async () => assert.deepEqual(errors, []));

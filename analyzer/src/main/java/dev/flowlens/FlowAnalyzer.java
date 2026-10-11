@@ -383,8 +383,15 @@ public class FlowAnalyzer {
     }
 
     private static boolean isPlumbing(TypeInfo t, String name) {
+        if (!ProjectModel.OTHER.equals(t.layer)) return false;
         // DTO/value objects: getters/setters on types that aren't Spring beans
-        return ProjectModel.OTHER.equals(t.layer) && isAccessor(name);
+        if (isAccessor(name)) return true;
+        // MyBatis Generator query builders (FooExample, its Criteria / GeneratedCriteria / Criterion)
+        for (TypeInfo c = t; c != null; c = c.outer) {
+            String n = c.simpleName;
+            if (n.endsWith("Example") || n.equals("Criteria") || n.equals("GeneratedCriteria") || n.equals("Criterion")) return true;
+        }
+        return false;
     }
 
     private record Target(TypeInfo owner, MethodDeclaration method, String kind, String confidence) {}
