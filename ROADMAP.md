@@ -15,8 +15,10 @@
 
 ## Next
 - [ ] Code-sign the release builds (needs certificates) and turn on auto-update
-- [ ] Kotlin sources (needs a Kotlin parser — decide on size/approach)
 - [ ] GraalVM native-image engine (see docs/native-image-spike.md)
 - [ ] Lineage through MapStruct mappers and constructor arguments
 - [ ] PR integration: comment a flow diff on pull requests (GitHub Action using `--diff`)
 - [ ] Windows on ARM native build
+
+## Out of scope (for now)
+- Kotlin sources

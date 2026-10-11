@@ -1,14 +1,14 @@
 # FlowLens — TODO and implementation status
 
 > **Status (0.2.0, branch `claude/implement-todo`):** everything below is implemented, except
-> where marked. ✅ done · 🟡 partly done · ❌ not done.
+> where marked. ✅ done · 🟡 partly done · ⛔ out of scope.
 >
 > Decisions taken: **Tauri 2** shell · **unsigned** builds for now (signing wired up, switched on
 > by adding secrets) · **two Mac downloads** (Intel, Apple Silicon) · scope **M1–M4**.
 >
 > Not done:
 > - 🟡 **D15 native-image:** Maven profile and notes only (`docs/native-image-spike.md`); not built.
-> - ❌ **Kotlin support:** needs a Kotlin parser (the Kotlin compiler is ~60 MB); left for a decision.
+> - ⛔ **Kotlin support:** out of scope for now (decided after review).
 > - Signing and auto-update only switch on once you add certificates and keys (see
 >   `desktop/README.md`). The release workflow has not run on GitHub yet: the first `v*` tag will
 >   exercise it.
@@ -147,7 +147,7 @@
 ### Later (existing roadmap)
 - ✅ **MCP server** so AI coding agents can query the graph (`--mcp`; Help → Connect AI Agents).
 - ✅ **Diff mode:** compare with a git ref or a snapshot; affected endpoints are marked.
-- ✅ JAX-RS / Micronaut / Quarkus detectors. ❌ Kotlin sources.
+- ✅ JAX-RS / Micronaut / Quarkus detectors. ⛔ Kotlin sources: out of scope for now.
 
 ---
 
