@@ -1,35 +1,11 @@
-# Builds installable desktop apps and publishes them as a GitHub Release, so people can download
-# FlowLens without building it:
-#
-#   - every push to main (i.e. every merged PR) -> next patch version (0.2.0 -> 0.2.1 -> ...),
-#     released as v<version> and marked "Latest"
-#   - a v* tag (git tag v1.0.0 && git push origin v1.0.0) -> that exact version
-#   - run manually from the Actions tab: on main it publishes; on any other branch it stays a draft
-#     (a test build only collaborators can see)
-#
-# The release is created as a draft, every platform uploads into it, and it is published only when
-# all of them succeed. If any build fails or the run is cancelled, the draft is deleted.
-#
-# Version: the highest released vX.Y.Z tag with its patch number + 1, or analyzer/pom.xml's version
-# if that is higher (no release yet, or someone bumped major/minor there: 0.3.0 -> 0.3.0, 0.3.1, ...).
-# It is written into pom.xml for the build only (never committed), and every part of the app reads it
-# from there. Signing is off unless the secrets below exist (empty values are never passed on).
-#
-# Unsigned by default. Add these repository secrets to switch signing on:
-#   macOS (Developer ID + notarization):
-#     APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
-#     APPLE_ID, APPLE_PASSWORD (app-specific password), APPLE_TEAM_ID
-#   Windows (Authenticode, .pfx):
-#     WINDOWS_CERTIFICATE (base64 .pfx), WINDOWS_CERTIFICATE_PASSWORD
-#   Auto-update (Tauri updater signatures, see desktop/README.md):
-#     TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+# Every push to main publishes the next patch version; v* tags publish that exact version.
+# Versioning, signing secrets and auto-update: see desktop/README.md (Releases).
 name: Release desktop apps
 
 on:
   push:
     branches: [main]
     tags: ['v*']
-    # docs-only merges don't produce a new app (path filters are ignored for tag pushes)
     paths-ignore: ['**.md', 'docs/**', 'LICENSE']
   workflow_dispatch:
 
@@ -126,8 +102,7 @@ jobs:
             bundles: app,dmg
             java-arch: aarch64
           - name: macOS Intel
-            # GitHub's Intel macOS runner. If it is retired, build on macos-14 instead with
-            # target x86_64-apple-darwin and FLOWLENS_JMODS pointing at an x64 JDK's jmods.
+            # If GitHub retires this runner, cross-build on macos-14 (see desktop/README.md)
             os: macos-15-intel
             target: x86_64-apple-darwin
             bundles: app,dmg
@@ -139,7 +114,7 @@ jobs:
             java-arch: x64
     runs-on: ${{ matrix.os }}
     env:
-      # Only flags here: the bundler treats a signing variable that exists, even empty, as "sign"
+      # Flags only: the bundler treats a signing variable that exists, even empty, as "sign"
       HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
       HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
       HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
@@ -226,8 +201,7 @@ jobs:
             args="$args --features updater --config src-tauri/tauri.updater.conf.json"
             echo "updater=true" >> "$GITHUB_OUTPUT"
           fi
-          # Unsigned macOS: seal the whole bundle with an ad-hoc signature. Without it only the main
-          # binary carries the linker's signature and Apple Silicon reports the download as "damaged".
+          # Without a certificate, ad-hoc sign or Apple Silicon reports the app as "damaged"
           if [ "$RUNNER_OS" = macOS ] && [ "$HAS_APPLE_CERT" != true ]; then
             args="$args --config src-tauri/tauri.macos-adhoc.conf.json"
           fi
@@ -258,7 +232,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Linux AppImage: lets linuxdeploy resolve the bundled JRE's own libraries (libjvm.so)
+          # lets linuxdeploy find the bundled JRE's libjvm.so for the AppImage
           LD_LIBRARY_PATH: ${{ github.workspace }}/desktop/src-tauri/engine/runtime/lib/server:${{ github.workspace }}/desktop/src-tauri/engine/runtime/lib
         with:
           projectPath: desktop
