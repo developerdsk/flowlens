@@ -39,7 +39,9 @@ from `analyzer/pom.xml` (the single version source) and builds the engine if it 
 
 ## Releases
 
-`.github/workflows/release.yml` builds on every `v*` tag (or manually):
+`.github/workflows/release.yml` builds and publishes a GitHub Release on every push to `main`
+(tagged `v<version>-build.<run>`, marked *Latest*), on every `v*` tag (named after the tag), or
+manually from the Actions tab (on a branch other than `main` it stays a draft, as a test build):
 
 | Download | Built on | Notes |
 |---|---|---|
@@ -48,7 +50,9 @@ from `analyzer/pom.xml` (the single version source) and builds the engine if it 
 | `FlowLens_x.y.z_x64.dmg` | `macos-15-intel` | see the workflow comment if GitHub retires Intel runners |
 | `.AppImage`, `.deb` | `ubuntu-22.04` | |
 
-Installers are attached to a **draft** GitHub Release; review and publish it.
+Every platform uploads into one draft release, which is published only when all builds succeed; if
+any build fails, the draft is deleted. Merges that only touch Markdown, `docs/` or `LICENSE` don't
+produce a release. `<version>` is read from `analyzer/pom.xml`: bump it there for a new version.
 
 ### Code signing (optional — builds are unsigned until you add secrets)
 

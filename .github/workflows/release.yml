@@ -1,6 +1,15 @@
-# Builds installable desktop apps and attaches them to a draft GitHub Release.
+# Builds installable desktop apps and publishes them as a GitHub Release, so people can download
+# FlowLens without building it:
 #
-#   git tag v0.2.0 && git push origin v0.2.0      (or run it manually from the Actions tab)
+#   - every push to main (i.e. every merged PR) -> release v<version>-build.<run>, marked "Latest"
+#   - a v* tag (git tag v0.3.0 && git push origin v0.3.0) -> release named after the tag
+#   - run manually from the Actions tab: on main it publishes; on any other branch it stays a draft
+#     (a test build only collaborators can see)
+#
+# The release is created as a draft, every platform uploads into it, and it is published only when
+# all of them succeed. If any build fails or the run is cancelled, the draft is deleted.
+#
+# Version: <version> comes from analyzer/pom.xml, the app's single version source.
 #
 # Unsigned by default. Add these repository secrets to switch signing on:
 #   macOS (Developer ID + notarization):
@@ -14,15 +23,73 @@ name: Release desktop apps
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
+    # docs-only merges don't produce a new app (path filters are ignored for tag pushes)
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  release:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.create.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Name the release
+        id: meta
+        shell: bash
+        run: |
+          version=$(node -p "/<artifactId>flowlens-analyzer<\/artifactId>\s*(?:<!--[\s\S]*?-->\s*)?<version>([^<]+)<\/version>/.exec(require('fs').readFileSync('analyzer/pom.xml','utf8'))[1]")
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag="$GITHUB_REF_NAME"; name="FlowLens ${GITHUB_REF_NAME#v}"
+          else
+            tag="v${version}-build.${GITHUB_RUN_NUMBER}"; name="FlowLens ${version} (build ${GITHUB_RUN_NUMBER})"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release
+        id: create
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          NAME: ${{ steps.meta.outputs.name }}
+        with:
+          script: |
+            const { data } = await github.rest.repos.createRelease({
+              ...context.repo,
+              tag_name: process.env.TAG,
+              target_commitish: context.sha,
+              name: process.env.NAME,
+              draft: true,
+              generate_release_notes: true,
+              body: [
+                'Download the installer for your computer from **Assets** below:',
+                '- **Windows**: `FlowLens_*_x64-setup.exe` (or the `.msi`)',
+                '- **Mac with Apple Silicon (M1–M4)**: `FlowLens_*_aarch64.dmg`',
+                '- **Mac with Intel**: `FlowLens_*_x64.dmg`',
+                '- **Linux**: `.AppImage` or `.deb`',
+                '',
+                'No Java installation is needed. Builds are not code-signed yet: on macOS right-click the app → **Open** the first time; on Windows choose **More info → Run anyway**.',
+                '',
+                `Built from ${context.sha.slice(0, 7)}.`,
+              ].join('\n'),
+            });
+            return data.id;
+
   build:
     name: ${{ matrix.name }}
+    needs: release
     strategy:
       fail-fast: false
       matrix:
@@ -145,16 +212,36 @@ jobs:
           projectPath: desktop
           tauriScript: npx tauri
           args: ${{ steps.features.outputs.args }}
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}-dev', github.run_number) }}
-          releaseName: 'FlowLens ${{ github.ref_type == ''tag'' && github.ref_name || ''dev build'' }}'
-          releaseBody: |
-            Download the installer for your computer:
-            - **Windows**: `FlowLens_*_x64-setup.exe` (or the `.msi`)
-            - **Mac with Apple Silicon (M1–M4)**: `FlowLens_*_aarch64.dmg`
-            - **Mac with Intel**: `FlowLens_*_x64.dmg`
-            - **Linux**: `.AppImage` or `.deb`
-
-            No Java installation is needed. See the README for first-launch notes on unsigned builds.
-          releaseDraft: true
-          prerelease: ${{ github.ref_type != 'tag' }}
+          releaseId: ${{ needs.release.outputs.id }}
           includeUpdaterJson: ${{ steps.features.outputs.updater == 'true' }}
+
+  publish:
+    name: Publish release
+    needs: [release, build]
+    if: github.ref_type == 'tag' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          RELEASE_ID: ${{ needs.release.outputs.id }}
+        with:
+          script: |
+            await github.rest.repos.updateRelease({
+              ...context.repo,
+              release_id: Number(process.env.RELEASE_ID),
+              draft: false,
+              make_latest: 'true',
+            });
+
+  discard:
+    name: Delete draft after a failed build
+    needs: [release, build]
+    if: (failure() || cancelled()) && needs.release.outputs.id != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          RELEASE_ID: ${{ needs.release.outputs.id }}
+        with:
+          script: |
+            await github.rest.repos.deleteRelease({ ...context.repo, release_id: Number(process.env.RELEASE_ID) });
