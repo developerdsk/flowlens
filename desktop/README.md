@@ -39,9 +39,9 @@ from `analyzer/pom.xml` (the single version source) and builds the engine if it 
 
 ## Releases
 
-`.github/workflows/release.yml` builds and publishes a GitHub Release on every push to `main`
-(tagged `v<version>-build.<run>`, marked *Latest*), on every `v*` tag (named after the tag), or
-manually from the Actions tab (on a branch other than `main` it stays a draft, as a test build):
+`.github/workflows/release.yml` builds and publishes a GitHub Release on every push to `main` (every
+merged PR), on every `v*` tag, or manually from the Actions tab (on a branch other than `main` it
+stays a draft, as a test build):
 
 | Download | Built on | Notes |
 |---|---|---|
@@ -52,7 +52,13 @@ manually from the Actions tab (on a branch other than `main` it stays a draft, a
 
 Every platform uploads into one draft release, which is published only when all builds succeed; if
 any build fails, the draft is deleted. Merges that only touch Markdown, `docs/` or `LICENSE` don't
-produce a release. `<version>` is read from `analyzer/pom.xml`: bump it there for a new version.
+produce a release.
+
+**Versions bump automatically.** Each merge to `main` releases the next patch version (`0.2.0` →
+`0.2.1` → `0.2.2` …): the highest published `vX.Y.Z` tag plus one. Nothing is committed back; the
+workflow writes the version into `analyzer/pom.xml` for the build only. To start a new minor or major
+line, set it in `analyzer/pom.xml` (e.g. `0.3.0`), and the next merge releases exactly that. Pushing
+a tag like `v1.0.0` releases that exact version.
 
 ### Code signing (optional — builds are unsigned until you add secrets)
 

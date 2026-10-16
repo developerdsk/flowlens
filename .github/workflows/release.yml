@@ -1,15 +1,19 @@
 # Builds installable desktop apps and publishes them as a GitHub Release, so people can download
 # FlowLens without building it:
 #
-#   - every push to main (i.e. every merged PR) -> release v<version>-build.<run>, marked "Latest"
-#   - a v* tag (git tag v0.3.0 && git push origin v0.3.0) -> release named after the tag
+#   - every push to main (i.e. every merged PR) -> next patch version (0.2.0 -> 0.2.1 -> ...),
+#     released as v<version> and marked "Latest"
+#   - a v* tag (git tag v1.0.0 && git push origin v1.0.0) -> that exact version
 #   - run manually from the Actions tab: on main it publishes; on any other branch it stays a draft
 #     (a test build only collaborators can see)
 #
 # The release is created as a draft, every platform uploads into it, and it is published only when
 # all of them succeed. If any build fails or the run is cancelled, the draft is deleted.
 #
-# Version: <version> comes from analyzer/pom.xml, the app's single version source.
+# Version: the highest released vX.Y.Z tag with its patch number + 1, or analyzer/pom.xml's version
+# if that is higher (no release yet, or someone bumped major/minor there: 0.3.0 -> 0.3.0, 0.3.1, ...).
+# It is written into pom.xml for the build only (never committed), and every part of the app reads it
+# from there. Signing is off unless the secrets below exist (empty values are never passed on).
 #
 # Unsigned by default. Add these repository secrets to switch signing on:
 #   macOS (Developer ID + notarization):
@@ -42,21 +46,34 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       id: ${{ steps.create.outputs.result }}
+      version: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Name the release
+      - name: Pick the version
         id: meta
         shell: bash
         run: |
-          version=$(node -p "/<artifactId>flowlens-analyzer<\/artifactId>\s*(?:<!--[\s\S]*?-->\s*)?<version>([^<]+)<\/version>/.exec(require('fs').readFileSync('analyzer/pom.xml','utf8'))[1]")
+          semver_max() { sort -t. -k1,1n -k2,2n -k3,3n | tail -1; }
           if [ "$GITHUB_REF_TYPE" = tag ]; then
-            tag="$GITHUB_REF_NAME"; name="FlowLens ${GITHUB_REF_NAME#v}"
+            version="${GITHUB_REF_NAME#v}"
           else
-            tag="v${version}-build.${GITHUB_RUN_NUMBER}"; name="FlowLens ${version} (build ${GITHUB_RUN_NUMBER})"
+            base=$(node -p "/<artifactId>flowlens-analyzer<\/artifactId>\s*(?:<!--[\s\S]*?-->\s*)?<version>([^<]+)<\/version>/.exec(require('fs').readFileSync('analyzer/pom.xml','utf8'))[1]")
+            latest=$(git ls-remote --tags --refs origin 'v*' | sed 's#.*refs/tags/v##' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | semver_max || true)
+            next="$base"
+            if [ -n "$latest" ]; then IFS=. read -r major minor patch <<< "$latest"; next="$major.$minor.$((patch + 1))"; fi
+            version=$(printf '%s\n%s\n' "$base" "$next" | semver_max)
           fi
+          echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::'$version' is not X.Y.Z"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = tag ] || [ "$GITHUB_REF" = refs/heads/main ]; then
+            tag="v$version"; name="FlowLens $version"
+          else
+            tag="v$version-test.$GITHUB_RUN_NUMBER"; name="FlowLens $version (test build from $GITHUB_REF_NAME)"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Version $version, tag $tag"
 
       - name: Create draft release
         id: create
@@ -118,11 +135,25 @@ jobs:
             java-arch: x64
     runs-on: ${{ matrix.os }}
     env:
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      # Only flags here: the bundler treats a signing variable that exists, even empty, as "sign"
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set the release version (${{ needs.release.outputs.version }})
+        shell: bash
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          node -e "
+            const fs = require('fs'), f = 'analyzer/pom.xml', s = fs.readFileSync(f, 'utf8');
+            const re = /(<artifactId>flowlens-analyzer<\/artifactId>\s*(?:<!--[\s\S]*?-->\s*)?<version>)[^<]+(<\/version>)/;
+            if (!re.test(s)) throw new Error('version not found in ' + f);
+            fs.writeFileSync(f, s.replace(re, '\$1' + process.env.VERSION + '\$2'));
+          "
+          grep -m1 -A3 '<artifactId>flowlens-analyzer' analyzer/pom.xml | grep '<version>'
 
       - uses: actions/setup-java@v4
         with:
@@ -164,18 +195,20 @@ jobs:
           SKIP_JAR=1 node scripts/build-engine.mjs
 
       - name: Sign the bundled Java runtime (macOS)
-        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
+        if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
         working-directory: desktop
         env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: bash scripts/macos-sign-runtime.sh
 
       - name: Windows code-signing certificate
-        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE != ''
+        if: runner.os == 'Windows' && env.HAS_WINDOWS_CERT == 'true'
         shell: pwsh
         working-directory: desktop
         env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: ./scripts/windows-signing.ps1
 
@@ -185,7 +218,7 @@ jobs:
         working-directory: desktop
         run: |
           args="--target ${{ matrix.target }} --bundles ${{ matrix.bundles }}"
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && ! grep -q REPLACE_WITH src-tauri/tauri.updater.conf.json; then
+          if [ "$HAS_UPDATER_KEY" = true ] && ! grep -q REPLACE_WITH src-tauri/tauri.updater.conf.json; then
             args="$args --features updater --config src-tauri/tauri.updater.conf.json"
             echo "updater=true" >> "$GITHUB_OUTPUT"
           fi
@@ -194,10 +227,9 @@ jobs:
           fi
           echo "args=$args" >> "$GITHUB_OUTPUT"
 
-      - name: Build and upload installers
-        uses: tauri-apps/tauri-action@v0
+      - name: Hand signing secrets to the bundler (only those that are set)
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -206,6 +238,17 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          pass() { for v in "$@"; do [ -n "${!v}" ] && printf '%s<<__FLOWLENS_EOF__\n%s\n__FLOWLENS_EOF__\n' "$v" "${!v}" >> "$GITHUB_ENV"; done; true; }
+          if [ "$RUNNER_OS" = macOS ] && [ "$HAS_APPLE_CERT" = true ]; then
+            pass APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+          fi
+          if [ "$HAS_UPDATER_KEY" = true ]; then pass TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; fi
+
+      - name: Build and upload installers
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Linux AppImage: lets linuxdeploy resolve the bundled JRE's own libraries (libjvm.so)
           LD_LIBRARY_PATH: ${{ github.workspace }}/desktop/src-tauri/engine/runtime/lib/server:${{ github.workspace }}/desktop/src-tauri/engine/runtime/lib
         with:
