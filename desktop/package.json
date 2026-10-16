@@ -1,0 +1,17 @@
+{
+  "name": "flowlens-desktop",
+  "private": true,
+  "version": "0.2.0",
+  "description": "FlowLens desktop app (Tauri 2 shell + bundled Java engine)",
+  "type": "module",
+  "scripts": {
+    "engine": "node scripts/build-engine.mjs",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "icons": "node scripts/make-icons.mjs",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "flowlens-viewer-tests",
+  "private": true,
+  "description": "End-to-end tests for the FlowLens viewer (the viewer itself has no build step).",
+  "type": "module",
+  "scripts": {
+    "e2e": "node tests/e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.47.0"
+  }
+}

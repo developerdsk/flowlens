@@ -1,0 +1,27 @@
+  LINEAGE request.email -> account.email
+  LINEAGE request.name -> account.name
+AccountController.changeStatus() --[changeStatus]--> AccountServiceImpl.changeStatus()
+AccountController.closeAccount() --[close]--> AccountServiceImpl.close()
+AccountController.createAccount() --[create]--> AccountServiceImpl.create()
+AccountController.getAccount() --[find]--> AccountServiceImpl.find()
+AccountServiceImpl.changeStatus() --[AccountRepository.updateStatus()]--> UPDATE account
+AccountServiceImpl.changeStatus() --[record]--> AuditService.record()
+AccountServiceImpl.close() --[AccountRepository.save()]--> UPSERT account
+AccountServiceImpl.close() --[find]--> AccountServiceImpl.find()
+AccountServiceImpl.close() --[record]--> AuditService.record()
+AccountServiceImpl.create() --[AccountRepository.existsByEmail()]--> SELECT account
+AccountServiceImpl.create() --[AccountRepository.save()]--> UPSERT account
+AccountServiceImpl.create() --[]--> if (accountRepository.existsByEmail(request.getEmail()))
+AccountServiceImpl.create() --[event AccountCreatedEvent]--> WelcomeMailer.onAccountCreated()
+AccountServiceImpl.create() --[record]--> AuditService.record()
+AccountServiceImpl.find() --[AccountRepository.findById()]--> SELECT account
+AuditService.record() --[jdbc.update()]--> INSERT audit_log
+DormantAccountCleanup.purgeClosedAccounts() --[AccountRepository.deleteByStatus()]--> DELETE account
+ENDPOINT DELETE /api/accounts/{id} src/main/java/com/example/demo/AccountController.java:38
+ENDPOINT GET /api/accounts/{id} src/main/java/com/example/demo/AccountController.java:28
+ENDPOINT PATCH /api/accounts/{id}/status src/main/java/com/example/demo/AccountController.java:33
+ENDPOINT POST /api/accounts src/main/java/com/example/demo/AccountController.java:23
+ENDPOINT SCHEDULED cron=0 0 3 * * * src/main/java/com/example/demo/DormantAccountCleanup.java:16
+WelcomeMailer.onAccountCreated() --[kafka.send()]--> KAFKA → account-events
+WelcomeMailer.onAccountCreated() --[rest.postForObject()]--> POST http://mail-service/api/welcome
+if (accountRepository.existsByEmail(request.getEmail())) --[then · throws]--> throw IllegalStateException

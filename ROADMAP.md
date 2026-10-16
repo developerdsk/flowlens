@@ -1,27 +1,24 @@
 # Roadmap
 
-FlowLens starts small and grows. This is the intended direction, roughly in order.
-
-## Now (MVP)
-- [x] Source-only analysis via JavaParser + SymbolSolver (no build of target needed)
-- [x] Spring MVC endpoint detection
-- [x] Inter-procedural call-chain walk (cycle-guarded)
-- [x] Spring Data repository sink classification
-- [x] `@Query` / native SQL / `JdbcTemplate` sink resolution
-- [x] Per-method capture of conditions & mutations (shown in node detail)
-- [x] Interactive Cytoscape viewer
+## Done (0.2.0)
+- [x] Installable desktop app for Windows, macOS (Intel + Apple Silicon), Linux, with bundled runtime
+- [x] Release pipeline; signing, notarization and auto-update ready to switch on
+- [x] Java 21 syntax, interface → implementation, multi-module, generated sources
+- [x] Branch conditions as first-class graph nodes
+- [x] MyBatis, jOOQ, Mongo, Redis, JdbcClient, Feign / HttpExchange, RestTemplate / WebClient, messaging
+- [x] JAX-RS / Quarkus, Micronaut, WebFlux routes, listeners, schedulers
+- [x] Field-level data lineage (request field → column)
+- [x] Endpoint explorer, tables view, search, export (PNG / SVG / Mermaid), snapshots
+- [x] MCP server for AI coding agents
+- [x] Diff mode (git ref or snapshot)
+- [x] Confidence markers and unresolved-call reporting
 
 ## Next
-- [ ] **Branch conditions as first-class graph nodes** (true control-flow shape, not just metadata)
-- [ ] Interface → implementation resolution (pick concrete `@Service`/`@Repository` impls)
-- [ ] MyBatis mapper XML + annotation support
-- [ ] Field-level data lineage (which request field ends up in which column)
-- [ ] Multi-endpoint overview graph + search
-- [ ] Export to Mermaid / PNG / SVG
+- [ ] Code-sign the release builds (needs certificates) and turn on auto-update
+- [ ] GraalVM native-image engine (see docs/native-image-spike.md)
+- [ ] Lineage through MapStruct mappers and constructor arguments
+- [ ] PR integration: comment a flow diff on pull requests (GitHub Action using `--diff`)
+- [ ] Windows on ARM native build
 
-## Later
-- [ ] **MCP server** so AI coding agents can query the flow graph ("what writes to the `account` table?", "impact of changing `AccountService.create`")
-- [ ] Diff mode: show how a PR changes the data flow
-- [ ] JAX-RS, Micronaut, Quarkus endpoint detectors
-- [ ] Kotlin support
-- [ ] Confidence scoring on unresolved edges
+## Out of scope (for now)
+- Kotlin sources

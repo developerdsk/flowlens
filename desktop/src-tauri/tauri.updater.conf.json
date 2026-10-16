@@ -1,0 +1,13 @@
+{
+  "bundle": {
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_THE_PUBLIC_KEY_FROM_npx_tauri_signer_generate",
+      "endpoints": [
+        "https://github.com/developerdsk/flowlens/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

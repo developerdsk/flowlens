@@ -1,6 +1,7 @@
 @echo off
-REM FlowLens launcher (Windows).
-REM Builds the analyzer if needed, then starts the local viewer server.
+REM FlowLens launcher (Windows) - browser mode.
+REM Builds the engine if needed (Maven is downloaded by the wrapper), then starts the local viewer server.
+REM For the installable desktop app, see desktop\README.md.
 setlocal
 cd /d "%~dp0"
 
@@ -11,11 +12,9 @@ set "JAR=analyzer\target\flowlens-analyzer.jar"
 if not exist "%JAR%" (
   echo Building FlowLens ^(first run^)...
   pushd analyzer
-  call mvn -q -B package
+  call mvnw.cmd -q -B -DskipTests package
   popd
 )
 
-echo Starting FlowLens on http://localhost:%PORT%
-echo Open that URL, then click "Open project" or paste a project path.
-java -jar "%JAR%" --serve %PORT%
+java -jar "%JAR%" --serve %PORT% --open
 endlocal
