@@ -63,8 +63,10 @@ a tag like `v1.0.0` releases that exact version.
 ### Code signing (optional — builds are unsigned until you add secrets)
 
 Unsigned apps work, but:
-- **macOS** says the app "can't be opened because Apple cannot check it". Right-click the app →
-  *Open* → *Open* once (or `xattr -dr com.apple.quarantine /Applications/FlowLens.app`).
+- **macOS** says Apple could not verify the app. Close the dialog, then *System Settings → Privacy &
+  Security → Open Anyway* once (or `xattr -dr com.apple.quarantine /Applications/FlowLens.app`).
+  Unsigned builds get an ad-hoc signature (`src-tauri/tauri.macos-adhoc.conf.json`); without it Apple
+  Silicon reports the download as "damaged" with no way to open it.
 - **Windows** SmartScreen shows "Windows protected your PC" → *More info* → *Run anyway*.
 
 To sign, add these repository secrets; the workflow picks them up automatically:

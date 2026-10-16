@@ -31,8 +31,10 @@ automatically every time a change is merged into `main`):
 
 No Java needed — the app bundles its own runtime. Then **Open project…**, pick a folder, done.
 
-> Until the builds are code-signed: on macOS right-click the app → **Open** the first time; on
-> Windows choose **More info → Run anyway** in the SmartScreen prompt.
+> Builds are not code-signed yet, so the first launch needs one extra step:
+> - **macOS**: open FlowLens once and close the warning, then go to **System Settings → Privacy &
+>   Security** and click **Open Anyway** (or run `xattr -dr com.apple.quarantine /Applications/FlowLens.app`).
+> - **Windows**: in the SmartScreen prompt choose **More info → Run anyway**.
 
 ## Screenshots
 

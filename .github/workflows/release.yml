@@ -97,7 +97,11 @@ jobs:
                 '- **Mac with Intel**: `FlowLens_*_x64.dmg`',
                 '- **Linux**: `.AppImage` or `.deb`',
                 '',
-                'No Java installation is needed. Builds are not code-signed yet: on macOS right-click the app → **Open** the first time; on Windows choose **More info → Run anyway**.',
+                'No Java installation is needed.',
+                '',
+                'Builds are not code-signed yet, so the first launch needs one extra step:',
+                '- **macOS**: open FlowLens once and close the warning, then go to **System Settings → Privacy & Security** and click **Open Anyway** (or run `xattr -dr com.apple.quarantine /Applications/FlowLens.app`).',
+                '- **Windows**: in the SmartScreen prompt choose **More info → Run anyway**.',
                 '',
                 `Built from ${context.sha.slice(0, 7)}.`,
               ].join('\n'),
@@ -221,6 +225,11 @@ jobs:
           if [ "$HAS_UPDATER_KEY" = true ] && ! grep -q REPLACE_WITH src-tauri/tauri.updater.conf.json; then
             args="$args --features updater --config src-tauri/tauri.updater.conf.json"
             echo "updater=true" >> "$GITHUB_OUTPUT"
+          fi
+          # Unsigned macOS: seal the whole bundle with an ad-hoc signature. Without it only the main
+          # binary carries the linker's signature and Apple Silicon reports the download as "damaged".
+          if [ "$RUNNER_OS" = macOS ] && [ "$HAS_APPLE_CERT" != true ]; then
+            args="$args --config src-tauri/tauri.macos-adhoc.conf.json"
           fi
           if [ -f src-tauri/tauri.windows-signing.conf.json ]; then
             args="$args --config src-tauri/tauri.windows-signing.conf.json"
