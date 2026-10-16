@@ -6,12 +6,13 @@
 
     <groupId>dev.flowlens</groupId>
     <artifactId>flowlens-analyzer</artifactId>
-    <!-- Single source of truth for the version: the engine, graph.json, the viewer and the
-         desktop app all read it from here (desktop/scripts/sync-version.mjs copies it). -->
-    <version>0.2.0</version>
+    <version>${revision}</version>
     <packaging>jar</packaging>
 
     <properties>
+        <!-- Single source of truth for the version (desktop/scripts/version.mjs reads it);
+             release builds pass the released version with -Drevision. -->
+        <revision>0.2.0</revision>
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <javaparser.version>3.26.2</javaparser.version>

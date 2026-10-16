@@ -19,8 +19,8 @@ It reads **source only** — no build, no running app, no instrumentation. Nothi
 ## Install
 
 Download the installer for your computer from the
-[latest release](https://github.com/developerdsk/flowlens/releases/latest) (a new one is published
-automatically every time a change is merged into `main`):
+[latest release](https://github.com/developerdsk/flowlens/releases/latest) (new versions are published
+automatically as changes are merged into `main`):
 
 | Computer | File |
 |---|---|

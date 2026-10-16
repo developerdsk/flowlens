@@ -1,20 +1,35 @@
-# Every push to main publishes the next patch version; v* tags publish that exact version.
+# Every push to main publishes the next patch version; vX.Y.Z tags publish that exact version.
+# Pushes that land while a release is building ship together in the next one.
 # Versioning, signing secrets and auto-update: see desktop/README.md (Releases).
 name: Release desktop apps
 
 on:
   push:
     branches: [main]
-    tags: ['v*']
-    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+    paths:
+      - '**'
+      - '!**.md'
+      - '!docs/**'
+      - '!LICENSE'
+      - '!.github/**'
+      - '.github/workflows/release.yml'
+      - '!viewer/tests/**'
+      - '!analyzer/src/test/**'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
+
+env:
+  # Flags only: the bundler treats a signing variable that exists, even empty, as "sign"
+  HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+  HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+  HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
 
 jobs:
   release:
@@ -23,21 +38,27 @@ jobs:
     outputs:
       id: ${{ steps.create.outputs.result }}
       version: ${{ steps.meta.outputs.version }}
+      latest: ${{ steps.meta.outputs.latest }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            analyzer/pom.xml
+            desktop/scripts/version.mjs
+          sparse-checkout-cone-mode: false
 
       - name: Pick the version
         id: meta
         shell: bash
         run: |
           semver_max() { sort -t. -k1,1n -k2,2n -k3,3n | tail -1; }
+          highest=$(git ls-remote --tags --refs origin 'v*' | sed 's#.*refs/tags/v##' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | semver_max || true)
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             version="${GITHUB_REF_NAME#v}"
           else
-            base=$(node -p "/<artifactId>flowlens-analyzer<\/artifactId>\s*(?:<!--[\s\S]*?-->\s*)?<version>([^<]+)<\/version>/.exec(require('fs').readFileSync('analyzer/pom.xml','utf8'))[1]")
-            latest=$(git ls-remote --tags --refs origin 'v*' | sed 's#.*refs/tags/v##' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | semver_max || true)
+            base=$(node desktop/scripts/version.mjs)
             next="$base"
-            if [ -n "$latest" ]; then IFS=. read -r major minor patch <<< "$latest"; next="$major.$minor.$((patch + 1))"; fi
+            if [ -n "$highest" ]; then IFS=. read -r major minor patch <<< "$highest"; next="$major.$minor.$((patch + 1))"; fi
             version=$(printf '%s\n%s\n' "$base" "$next" | semver_max)
           fi
           echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::'$version' is not X.Y.Z"; exit 1; }
@@ -46,10 +67,14 @@ jobs:
           else
             tag="v$version-test.$GITHUB_RUN_NUMBER"; name="FlowLens $version (test build from $GITHUB_REF_NAME)"
           fi
+          # an older hotfix tag must not become "latest" (the download link and the updater follow it)
+          latest=false
+          [ "$(printf '%s\n%s\n' "${highest:-0.0.0}" "$version" | semver_max)" = "$version" ] && latest=true
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "Version $version, tag $tag"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "Version $version, tag $tag, latest $latest"
 
       - name: Create draft release
         id: create
@@ -57,13 +82,25 @@ jobs:
         env:
           TAG: ${{ steps.meta.outputs.tag }}
           NAME: ${{ steps.meta.outputs.name }}
+          TEST_SUFFIX: ' (test build from ${{ github.ref_name }})'
         with:
           script: |
+            const { TAG, NAME, TEST_SUFFIX } = process.env;
+            // Leftovers: a draft for this tag from a failed run, or this branch's previous test build
+            const releases = await github.paginate(github.rest.repos.listReleases, { ...context.repo, per_page: 100 });
+            for (const r of releases.filter(r => r.draft && (r.tag_name === TAG || (r.tag_name.includes('-test.') && r.name.endsWith(TEST_SUFFIX))))) {
+              console.log(`Deleting old draft ${r.name} (${r.tag_name})`);
+              await github.rest.repos.deleteRelease({ ...context.repo, release_id: r.id });
+            }
+            const firstLaunch = [
+              process.env.HAS_APPLE_CERT !== 'true' && '- **macOS**: open FlowLens once and close the warning, then go to **System Settings → Privacy & Security** and click **Open Anyway** (or run `xattr -dr com.apple.quarantine /Applications/FlowLens.app`).',
+              process.env.HAS_WINDOWS_CERT !== 'true' && '- **Windows**: in the SmartScreen prompt choose **More info → Run anyway**.',
+            ].filter(Boolean);
             const { data } = await github.rest.repos.createRelease({
               ...context.repo,
-              tag_name: process.env.TAG,
+              tag_name: TAG,
               target_commitish: context.sha,
-              name: process.env.NAME,
+              name: NAME,
               draft: true,
               generate_release_notes: true,
               body: [
@@ -75,10 +112,7 @@ jobs:
                 '',
                 'No Java installation is needed.',
                 '',
-                'Builds are not code-signed yet, so the first launch needs one extra step:',
-                '- **macOS**: open FlowLens once and close the warning, then go to **System Settings → Privacy & Security** and click **Open Anyway** (or run `xattr -dr com.apple.quarantine /Applications/FlowLens.app`).',
-                '- **Windows**: in the SmartScreen prompt choose **More info → Run anyway**.',
-                '',
+                ...(firstLaunch.length ? ['The first launch needs one extra step because these builds are not code-signed yet:',...firstLaunch, ''] : []),
                 `Built from ${context.sha.slice(0, 7)}.`,
               ].join('\n'),
             });
@@ -114,25 +148,9 @@ jobs:
             java-arch: x64
     runs-on: ${{ matrix.os }}
     env:
-      # Flags only: the bundler treats a signing variable that exists, even empty, as "sign"
-      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
-      HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
-      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+      FLOWLENS_VERSION: ${{ needs.release.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set the release version (${{ needs.release.outputs.version }})
-        shell: bash
-        env:
-          VERSION: ${{ needs.release.outputs.version }}
-        run: |
-          node -e "
-            const fs = require('fs'), f = 'analyzer/pom.xml', s = fs.readFileSync(f, 'utf8');
-            const re = /(<artifactId>flowlens-analyzer<\/artifactId>\s*(?:<!--[\s\S]*?-->\s*)?<version>)[^<]+(<\/version>)/;
-            if (!re.test(s)) throw new Error('version not found in ' + f);
-            fs.writeFileSync(f, s.replace(re, '\$1' + process.env.VERSION + '\$2'));
-          "
-          grep -m1 -A3 '<artifactId>flowlens-analyzer' analyzer/pom.xml | grep '<version>'
 
       - uses: actions/setup-java@v4
         with:
@@ -144,6 +162,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      # tauri-action and the Tauri CLI read tauri.conf.json before prepare.mjs runs
+      - name: Set the app version (${{ needs.release.outputs.version }})
+        run: node desktop/scripts/version.mjs sync
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -159,14 +181,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev patchelf
 
-      - name: Test engine
+      # Tests already ran in CI for the pull request
+      - name: Build engine jar
         shell: bash
         working-directory: analyzer
         run: |
           ./mvnw -v || (sleep 15 && ./mvnw -v)
-          ./mvnw -B verify
+          ./mvnw -B -DskipTests -Drevision="$FLOWLENS_VERSION" package
 
-      - name: Build engine (jar + minimal Java runtime)
+      - name: Build engine runtime (minimal Java runtime)
         shell: bash
         working-directory: desktop
         run: |
@@ -210,33 +233,24 @@ jobs:
           fi
           echo "args=$args" >> "$GITHUB_OUTPUT"
 
-      - name: Hand signing secrets to the bundler (only those that are set)
-        shell: bash
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          pass() { for v in "$@"; do [ -n "${!v}" ] && printf '%s<<__FLOWLENS_EOF__\n%s\n__FLOWLENS_EOF__\n' "$v" "${!v}" >> "$GITHUB_ENV"; done; true; }
-          if [ "$RUNNER_OS" = macOS ] && [ "$HAS_APPLE_CERT" = true ]; then
-            pass APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
-          fi
-          if [ "$HAS_UPDATER_KEY" = true ]; then pass TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; fi
-
       - name: Build and upload installers
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # scripts/tauri.mjs passes the non-empty ones to the bundler without the SECRET_ prefix
+          SECRET_APPLE_CERTIFICATE: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE || '' }}
+          SECRET_APPLE_CERTIFICATE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          SECRET_APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          SECRET_APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
+          SECRET_APPLE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_PASSWORD || '' }}
+          SECRET_APPLE_TEAM_ID: ${{ runner.os == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
+          SECRET_TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          SECRET_TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # lets linuxdeploy find the bundled JRE's libjvm.so for the AppImage
           LD_LIBRARY_PATH: ${{ github.workspace }}/desktop/src-tauri/engine/runtime/lib/server:${{ github.workspace }}/desktop/src-tauri/engine/runtime/lib
         with:
           projectPath: desktop
-          tauriScript: npx tauri
+          tauriScript: node scripts/tauri.mjs
           args: ${{ steps.features.outputs.args }}
           releaseId: ${{ needs.release.outputs.id }}
           includeUpdaterJson: ${{ steps.features.outputs.updater == 'true' }}
@@ -250,18 +264,19 @@ jobs:
       - uses: actions/github-script@v7
         env:
           RELEASE_ID: ${{ needs.release.outputs.id }}
+          LATEST: ${{ needs.release.outputs.latest }}
         with:
           script: |
             await github.rest.repos.updateRelease({
               ...context.repo,
               release_id: Number(process.env.RELEASE_ID),
               draft: false,
-              make_latest: 'true',
+              make_latest: process.env.LATEST,
             });
 
   discard:
-    name: Delete draft after a failed build
-    needs: [release, build]
+    name: Delete draft after a failure
+    needs: [release, build, publish]
     if: (failure() || cancelled()) && needs.release.outputs.id != ''
     runs-on: ubuntu-latest
     steps:
