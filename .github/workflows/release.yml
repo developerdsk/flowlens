@@ -1,28 +1,126 @@
-# Builds installable desktop apps and attaches them to a draft GitHub Release.
-#
-#   git tag v0.2.0 && git push origin v0.2.0      (or run it manually from the Actions tab)
-#
-# Unsigned by default. Add these repository secrets to switch signing on:
-#   macOS (Developer ID + notarization):
-#     APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
-#     APPLE_ID, APPLE_PASSWORD (app-specific password), APPLE_TEAM_ID
-#   Windows (Authenticode, .pfx):
-#     WINDOWS_CERTIFICATE (base64 .pfx), WINDOWS_CERTIFICATE_PASSWORD
-#   Auto-update (Tauri updater signatures, see desktop/README.md):
-#     TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+# Every push to main publishes the next patch version; vX.Y.Z tags publish that exact version.
+# Pushes that land while a release is building ship together in the next one.
+# Versioning, signing secrets and auto-update: see desktop/README.md (Releases).
 name: Release desktop apps
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+    paths:
+      - '**'
+      - '!**.md'
+      - '!docs/**'
+      - '!LICENSE'
+      - '!.github/**'
+      - '.github/workflows/release.yml'
+      - '!viewer/tests/**'
+      - '!analyzer/src/test/**'
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # Flags only: the bundler treats a signing variable that exists, even empty, as "sign"
+  HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+  HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+  HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+
 jobs:
+  release:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.create.outputs.result }}
+      version: ${{ steps.meta.outputs.version }}
+      latest: ${{ steps.meta.outputs.latest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            analyzer/pom.xml
+            desktop/scripts/version.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Pick the version
+        id: meta
+        shell: bash
+        run: |
+          semver_max() { sort -t. -k1,1n -k2,2n -k3,3n | tail -1; }
+          highest=$(git ls-remote --tags --refs origin 'v*' | sed 's#.*refs/tags/v##' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | semver_max || true)
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            base=$(node desktop/scripts/version.mjs)
+            next="$base"
+            if [ -n "$highest" ]; then IFS=. read -r major minor patch <<< "$highest"; next="$major.$minor.$((patch + 1))"; fi
+            version=$(printf '%s\n%s\n' "$base" "$next" | semver_max)
+          fi
+          echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::'$version' is not X.Y.Z"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = tag ] || [ "$GITHUB_REF" = refs/heads/main ]; then
+            tag="v$version"; name="FlowLens $version"
+          else
+            tag="v$version-test.$GITHUB_RUN_NUMBER"; name="FlowLens $version (test build from $GITHUB_REF_NAME)"
+          fi
+          # an older hotfix tag must not become "latest" (the download link and the updater follow it)
+          latest=false
+          [ "$(printf '%s\n%s\n' "${highest:-0.0.0}" "$version" | semver_max)" = "$version" ] && latest=true
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "Version $version, tag $tag, latest $latest"
+
+      - name: Create draft release
+        id: create
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          NAME: ${{ steps.meta.outputs.name }}
+          TEST_SUFFIX: ' (test build from ${{ github.ref_name }})'
+        with:
+          script: |
+            const { TAG, NAME, TEST_SUFFIX } = process.env;
+            // Leftovers: a draft for this tag from a failed run, or this branch's previous test build
+            const releases = await github.paginate(github.rest.repos.listReleases, { ...context.repo, per_page: 100 });
+            for (const r of releases.filter(r => r.draft && (r.tag_name === TAG || (r.tag_name.includes('-test.') && r.name.endsWith(TEST_SUFFIX))))) {
+              console.log(`Deleting old draft ${r.name} (${r.tag_name})`);
+              await github.rest.repos.deleteRelease({ ...context.repo, release_id: r.id });
+            }
+            const firstLaunch = [
+              process.env.HAS_APPLE_CERT !== 'true' && '- **macOS**: open FlowLens once and close the warning, then go to **System Settings → Privacy & Security** and click **Open Anyway** (or run `xattr -dr com.apple.quarantine /Applications/FlowLens.app`).',
+              process.env.HAS_WINDOWS_CERT !== 'true' && '- **Windows**: in the SmartScreen prompt choose **More info → Run anyway**.',
+            ].filter(Boolean);
+            const { data } = await github.rest.repos.createRelease({
+              ...context.repo,
+              tag_name: TAG,
+              target_commitish: context.sha,
+              name: NAME,
+              draft: true,
+              generate_release_notes: true,
+              body: [
+                'Download the installer for your computer from **Assets** below:',
+                '- **Windows**: `FlowLens_*_x64-setup.exe` (or the `.msi`)',
+                '- **Mac with Apple Silicon (M1–M4)**: `FlowLens_*_aarch64.dmg`',
+                '- **Mac with Intel**: `FlowLens_*_x64.dmg`',
+                '- **Linux**: `.AppImage` or `.deb`',
+                '',
+                'No Java installation is needed.',
+                '',
+                ...(firstLaunch.length ? ['The first launch needs one extra step because these builds are not code-signed yet:',...firstLaunch, ''] : []),
+                `Built from ${context.sha.slice(0, 7)}.`,
+              ].join('\n'),
+            });
+            return data.id;
+
   build:
     name: ${{ matrix.name }}
+    needs: release
     strategy:
       fail-fast: false
       matrix:
@@ -38,8 +136,7 @@ jobs:
             bundles: app,dmg
             java-arch: aarch64
           - name: macOS Intel
-            # GitHub's Intel macOS runner. If it is retired, build on macos-14 instead with
-            # target x86_64-apple-darwin and FLOWLENS_JMODS pointing at an x64 JDK's jmods.
+            # If GitHub retires this runner, cross-build on macos-14 (see desktop/README.md)
             os: macos-15-intel
             target: x86_64-apple-darwin
             bundles: app,dmg
@@ -51,9 +148,7 @@ jobs:
             java-arch: x64
     runs-on: ${{ matrix.os }}
     env:
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      FLOWLENS_VERSION: ${{ needs.release.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -67,6 +162,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      # tauri-action and the Tauri CLI read tauri.conf.json before prepare.mjs runs
+      - name: Set the app version (${{ needs.release.outputs.version }})
+        run: node desktop/scripts/version.mjs sync
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -82,14 +181,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev patchelf
 
-      - name: Test engine
+      # Tests already ran in CI for the pull request
+      - name: Build engine jar
         shell: bash
         working-directory: analyzer
         run: |
           ./mvnw -v || (sleep 15 && ./mvnw -v)
-          ./mvnw -B verify
+          ./mvnw -B -DskipTests -Drevision="$FLOWLENS_VERSION" package
 
-      - name: Build engine (jar + minimal Java runtime)
+      - name: Build engine runtime (minimal Java runtime)
         shell: bash
         working-directory: desktop
         run: |
@@ -97,18 +197,20 @@ jobs:
           SKIP_JAR=1 node scripts/build-engine.mjs
 
       - name: Sign the bundled Java runtime (macOS)
-        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
+        if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
         working-directory: desktop
         env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: bash scripts/macos-sign-runtime.sh
 
       - name: Windows code-signing certificate
-        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE != ''
+        if: runner.os == 'Windows' && env.HAS_WINDOWS_CERT == 'true'
         shell: pwsh
         working-directory: desktop
         env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: ./scripts/windows-signing.ps1
 
@@ -118,9 +220,13 @@ jobs:
         working-directory: desktop
         run: |
           args="--target ${{ matrix.target }} --bundles ${{ matrix.bundles }}"
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && ! grep -q REPLACE_WITH src-tauri/tauri.updater.conf.json; then
+          if [ "$HAS_UPDATER_KEY" = true ] && ! grep -q REPLACE_WITH src-tauri/tauri.updater.conf.json; then
             args="$args --features updater --config src-tauri/tauri.updater.conf.json"
             echo "updater=true" >> "$GITHUB_OUTPUT"
+          fi
+          # Without a certificate, ad-hoc sign or Apple Silicon reports the app as "damaged"
+          if [ "$RUNNER_OS" = macOS ] && [ "$HAS_APPLE_CERT" != true ]; then
+            args="$args --config src-tauri/tauri.macos-adhoc.conf.json"
           fi
           if [ -f src-tauri/tauri.windows-signing.conf.json ]; then
             args="$args --config src-tauri/tauri.windows-signing.conf.json"
@@ -131,30 +237,52 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Linux AppImage: lets linuxdeploy resolve the bundled JRE's own libraries (libjvm.so)
+          # scripts/tauri.mjs passes the non-empty ones to the bundler without the SECRET_ prefix
+          SECRET_APPLE_CERTIFICATE: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE || '' }}
+          SECRET_APPLE_CERTIFICATE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          SECRET_APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          SECRET_APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
+          SECRET_APPLE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_PASSWORD || '' }}
+          SECRET_APPLE_TEAM_ID: ${{ runner.os == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
+          SECRET_TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          SECRET_TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # lets linuxdeploy find the bundled JRE's libjvm.so for the AppImage
           LD_LIBRARY_PATH: ${{ github.workspace }}/desktop/src-tauri/engine/runtime/lib/server:${{ github.workspace }}/desktop/src-tauri/engine/runtime/lib
         with:
           projectPath: desktop
-          tauriScript: npx tauri
+          tauriScript: node scripts/tauri.mjs
           args: ${{ steps.features.outputs.args }}
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}-dev', github.run_number) }}
-          releaseName: 'FlowLens ${{ github.ref_type == ''tag'' && github.ref_name || ''dev build'' }}'
-          releaseBody: |
-            Download the installer for your computer:
-            - **Windows**: `FlowLens_*_x64-setup.exe` (or the `.msi`)
-            - **Mac with Apple Silicon (M1–M4)**: `FlowLens_*_aarch64.dmg`
-            - **Mac with Intel**: `FlowLens_*_x64.dmg`
-            - **Linux**: `.AppImage` or `.deb`
-
-            No Java installation is needed. See the README for first-launch notes on unsigned builds.
-          releaseDraft: true
-          prerelease: ${{ github.ref_type != 'tag' }}
+          releaseId: ${{ needs.release.outputs.id }}
           includeUpdaterJson: ${{ steps.features.outputs.updater == 'true' }}
+
+  publish:
+    name: Publish release
+    needs: [release, build]
+    if: github.ref_type == 'tag' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          RELEASE_ID: ${{ needs.release.outputs.id }}
+          LATEST: ${{ needs.release.outputs.latest }}
+        with:
+          script: |
+            await github.rest.repos.updateRelease({
+              ...context.repo,
+              release_id: Number(process.env.RELEASE_ID),
+              draft: false,
+              make_latest: process.env.LATEST,
+            });
+
+  discard:
+    name: Delete draft after a failure
+    needs: [release, build, publish]
+    if: (failure() || cancelled()) && needs.release.outputs.id != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          RELEASE_ID: ${{ needs.release.outputs.id }}
+        with:
+          script: |
+            await github.rest.repos.deleteRelease({ ...context.repo, release_id: Number(process.env.RELEASE_ID) });

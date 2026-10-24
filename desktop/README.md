@@ -35,26 +35,46 @@ npm run build                   # installers for this OS in src-tauri/target/rel
 ```
 
 `scripts/prepare.mjs` runs automatically before dev/build: it copies the viewer, syncs the version
-from `analyzer/pom.xml` (the single version source) and builds the engine if it is missing.
+(`scripts/version.mjs`, which reads `<revision>` in `analyzer/pom.xml`) and builds the engine if it
+is missing.
 
 ## Releases
 
-`.github/workflows/release.yml` builds on every `v*` tag (or manually):
+`.github/workflows/release.yml` builds and publishes a GitHub Release on every push to `main` (every
+merged PR), on every `vX.Y.Z` tag, or manually from the Actions tab (on a branch other than `main` it
+stays a draft, as a test build; each new test build replaces that branch's previous one):
 
 | Download | Built on | Notes |
 |---|---|---|
 | `FlowLens_x.y.z_x64-setup.exe`, `.msi` | `windows-latest` | per-user install, no admin; WebView2 bootstrapper embedded |
 | `FlowLens_x.y.z_aarch64.dmg` | `macos-14` (Apple Silicon) | |
-| `FlowLens_x.y.z_x64.dmg` | `macos-15-intel` | see the workflow comment if GitHub retires Intel runners |
+| `FlowLens_x.y.z_x64.dmg` | `macos-15-intel` | if GitHub retires Intel runners, see [Cross-building macOS Intel on Apple Silicon](#cross-building-macos-intel-on-apple-silicon) |
 | `.AppImage`, `.deb` | `ubuntu-22.04` | |
 
-Installers are attached to a **draft** GitHub Release; review and publish it.
+Every platform uploads into one draft release, which is published only when all builds succeed; if
+any build or the publish step fails, the draft is deleted. Merges that can't change the app
+(Markdown, `docs/`, `LICENSE`, tests, other workflows) don't produce a release. Tests are not re-run:
+they already ran in CI for the pull request.
+
+Releases run one at a time. Merges that land while a release is building are released together by
+the next run, so a merge doesn't always get a release of its own. A tag pushed during a build can be
+superseded the same way; re-run its workflow from the Actions tab if that happens.
+
+**Versions bump automatically.** Each merge to `main` releases the next patch version (`0.2.0` →
+`0.2.1` → `0.2.2` …): the highest published `vX.Y.Z` tag plus one. Nothing is committed back: the
+workflow passes the version to Maven (`-Drevision`) and to the Tauri files (`scripts/version.mjs
+sync`) for the build only, so the repo keeps the base version and local builds report it. To start a
+new minor or major line, set `<revision>` in `analyzer/pom.xml` (e.g. `0.3.0`), and the next merge
+releases exactly that. Pushing a tag like `v1.0.0` releases that exact version; an older hotfix tag
+is published without becoming the latest release.
 
 ### Code signing (optional — builds are unsigned until you add secrets)
 
 Unsigned apps work, but:
-- **macOS** says the app "can't be opened because Apple cannot check it". Right-click the app →
-  *Open* → *Open* once (or `xattr -dr com.apple.quarantine /Applications/FlowLens.app`).
+- **macOS** says Apple could not verify the app. Close the dialog, then *System Settings → Privacy &
+  Security → Open Anyway* once (or `xattr -dr com.apple.quarantine /Applications/FlowLens.app`).
+  Unsigned builds get an ad-hoc signature (`src-tauri/tauri.macos-adhoc.conf.json`); without it Apple
+  Silicon reports the download as "damaged" with no way to open it.
 - **Windows** SmartScreen shows "Windows protected your PC" → *More info* → *Run anyway*.
 
 To sign, add these repository secrets; the workflow picks them up automatically:
