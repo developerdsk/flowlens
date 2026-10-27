@@ -445,3 +445,42 @@ ul.list li.nav small { display: block; color: var(--muted); font-size: 11px; }
 .pv-caption.above b { color: var(--k-decision-text); }
 .pv-caption.start { transform: none; align-items: flex-start; max-width: 150px; }
 .pv-caption.start b, .pv-caption.start small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+/* --- all-endpoints catalog (preview) ---------------------------------------------------------- */
+.catalog { position: absolute; inset: 0; z-index: 7; overflow: auto; display: flex; flex-direction: column; gap: 20px; padding: 24px 28px 40px; background: var(--bg); }
+.cat-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; }
+.cat-head > div:first-child { display: flex; flex-direction: column; gap: 4px; margin-right: auto; }
+.cat-head h1 { margin: 0; font-size: 22px; font-weight: 600; }
+.cat-totals { font-size: 13px; color: var(--muted); }
+.cat-head .seg button { height: 28px; padding: 0 12px; border: none; border-radius: 6px; background: none; color: var(--text2); font-size: 12px; }
+.cat-head .seg button.active { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.1); }
+.cat-group { display: flex; flex-direction: column; gap: 12px; }
+.cat-group h2 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text2); }
+.cat-group h2 small { font-size: 13px; font-weight: 400; color: var(--muted); }
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr)); gap: 16px; }
+.cat-card {
+  display: flex; flex-direction: column; align-items: stretch; gap: 14px; padding: 16px 18px; text-align: left;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(16,24,40,.05);
+}
+.cat-card:hover:not(:disabled) { background: var(--panel); border-color: var(--accent); }
+.cat-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cat-top .verb { width: auto; padding: 2px 8px; font-size: 11px; }
+.cat-top b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-top small { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.cat-sketch { fill: none; stroke-width: 1.5; }
+.cat-sketch .g-line { stroke: var(--line-strong); }
+.cat-sketch .g-start { stroke: var(--k-start); stroke-linecap: round; }
+.cat-sketch .g-end { stroke: var(--text); stroke-width: 2.6; }
+.cat-sketch .g-error { stroke: var(--k-error); stroke-width: 2.6; }
+.cat-sketch .g-step { stroke: var(--faint); }
+.cat-sketch .g-inferred { stroke: var(--c-inferred); stroke-dasharray: 3 2; }
+.cat-sketch .g-sub { stroke: var(--k-service); }
+.cat-sketch .g-async { stroke: var(--k-async); stroke-width: 1.2; } .cat-sketch .g-async.thin { stroke-width: 1; }
+.cat-sketch .g-decision { fill: var(--k-decision-bg); stroke: var(--k-decision); }
+.cat-rows { display: grid; grid-template-columns: 76px 1fr; row-gap: 8px; align-items: center; font-size: 12px; }
+.cat-k { color: var(--muted); }
+.cat-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cat-chips span { font: 12px var(--font-mono); padding: 2px 8px; border-radius: 5px; }
+.cat-foot { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.cat-foot .err { color: var(--k-error); }
+.cat-empty { color: var(--muted); }

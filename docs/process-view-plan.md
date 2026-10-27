@@ -41,8 +41,8 @@ Turn the approved design into the real FlowLens viewer, one small PR at a time.
 | 4 | Toolbar and sidebar layout | `process-view/04-shell` | merged | [#8](https://github.com/developerdsk/flowlens/pull/8) |
 | 5 | Process view, read-only (preview) | `process-view/05-process-view` | merged | [#9](https://github.com/developerdsk/flowlens/pull/9) |
 | 6 | Step detail panel | `process-view/06-detail-panel` | merged | [#10](https://github.com/developerdsk/flowlens/pull/10) |
-| 7 | Expand sub-processes in place | `process-view/07-drill-in` | open | [#11](https://github.com/developerdsk/flowlens/pull/11) |
-| 8 | All-endpoints catalog | `process-view/08-catalog` | todo | |
+| 7 | Expand sub-processes in place | `process-view/07-drill-in` | merged | [#11](https://github.com/developerdsk/flowlens/pull/11) |
+| 8 | All-endpoints catalog | `process-view/08-catalog` | open | |
 | 9 | Compare and export in the process view | `process-view/09-compare-export` | todo | |
 | 10 | Make the process view the default | `process-view/10-default` | todo | |
 
