@@ -56,11 +56,11 @@ class ServerTest {
             String all = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             int code = Integer.parseInt(all.substring(9, 12));
             String respBody = all.substring(all.indexOf("\r\n\r\n") + 4);
-            return new Response(code, respBody);
+            return new Response(code, all.substring(0, all.indexOf("\r\n\r\n")), respBody);
         }
     }
 
-    record Response(int code, String body) {
+    record Response(int code, String head, String body) {
         JsonNode json() throws IOException { return Json.MAPPER.readTree(body); }
     }
 
@@ -172,5 +172,13 @@ class ServerTest {
         assertEquals(200, r.code());
         assertTrue(r.body().contains("FlowLens"));
         assertEquals(400, raw(port, "GET", "/../pom.xml", "localhost:" + port, null, null, null, null).code());
+    }
+
+    @Test
+    void bundledFontsAreServedAsFonts() throws Exception {
+        int port = start(null);
+        Response r = raw(port, "GET", "/fonts/ibm-plex-sans-latin-400-normal.woff2", "localhost:" + port, null, null, null, null);
+        assertEquals(200, r.code());
+        assertTrue(r.head().toLowerCase(java.util.Locale.ROOT).contains("content-type: font/woff2"), r.head());
     }
 }

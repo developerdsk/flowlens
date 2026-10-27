@@ -11,3 +11,4 @@ analyzer/src/test/resources/golden/*.txt text eol=lf
 *.webm binary
 *.icns binary
 *.ico binary
+*.woff2 binary

@@ -15,7 +15,7 @@ export function toSvg(cy) {
   const pad = 30;
   const w = Math.ceil(bb.w + pad * 2), h = Math.ceil(bb.h + pad * 2);
   const ox = pad - bb.x1, oy = pad - bb.y1;
-  const font = '-apple-system, Segoe UI, Roboto, sans-serif';
+  const font = cssVar('--font-sans').replace(/"/g, "'");
   const out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="${font}">`);
   out.push(`<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${cssVar('--edge-arrow')}"/></marker></defs>`);

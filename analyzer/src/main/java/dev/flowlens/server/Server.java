@@ -52,7 +52,9 @@ public class Server {
             Map.entry(".json", "application/json; charset=utf-8"),
             Map.entry(".svg", "image/svg+xml"),
             Map.entry(".png", "image/png"),
-            Map.entry(".ico", "image/x-icon"));
+            Map.entry(".ico", "image/x-icon"),
+            Map.entry(".woff2", "font/woff2"),
+            Map.entry(".txt", "text/plain; charset=utf-8"));
 
     /** Server settings. */
     public static class Config {
