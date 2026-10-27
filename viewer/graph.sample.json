@@ -51,7 +51,7 @@
     "account.setStatus(\"ACTIVE\")",
     "account.setStatus(\"PENDING\")"
    ],
-   "source": "@Override\npublic Account create(CreateAccountRequest request) {\n    if (accountRepository.existsByEmail(request.getEmail())) {\n        throw new IllegalStateException(\"email already registered\");\n    }\n    Account account = new Account();\n    account.setEmail(request.getEmail());\n    account.setName(request.getName());\n    if (request.getName() != null && request.getName().length() > 2) {\n        account.setStatus(\"ACTIVE\");\n    } else {\n        account.setStatus(\"PENDING\");\n    }\n    Account saved = accountRepository.save(account);\n    auditService.record(\"account.created\", saved.getId());\n    events.publishEvent(new AccountCreatedEvent(saved.getId(), saved.getEmail()));\n    return saved;\n}",
+   "source": "@Override\npublic Account create(CreateAccountRequest request) {\n    if (accountRepository.existsByEmail(request.getEmail())) {\n        throw new IllegalStateException(\"email already registered\");\n    }\n\n    Account account = new Account();\n    account.setEmail(request.getEmail());\n    account.setName(request.getName());\n\n    if (request.getName() != null && request.getName().length() > 2) {\n        account.setStatus(\"ACTIVE\");\n    } else {\n        account.setStatus(\"PENDING\");\n    }\n\n    Account saved = accountRepository.save(account);\n    auditService.record(\"account.created\", saved.getId());\n    events.publishEvent(new AccountCreatedEvent(saved.getId(), saved.getEmail()));\n    return saved;\n}",
    "hash": "7146074fdafb"
   },
   {
@@ -83,7 +83,7 @@
    "file": "src/main/java/com/example/demo/AuditService.java",
    "line": 15,
    "confidence": "high",
-   "source": "public void record(String event, Long entityId) {\n    jdbcTemplate.update(\"INSERT INTO audit_log (event, entity_id) VALUES (?, ?)\", event, entityId);\n}",
+   "source": "public void record(String event, Long entityId) {\n    jdbcTemplate.update(\n        \"INSERT INTO audit_log (event, entity_id) VALUES (?, ?)\",\n        event, entityId);\n}",
    "hash": "734c73bc039e"
   },
   {
@@ -173,7 +173,7 @@
    "file": "src/main/java/com/example/demo/AccountServiceImpl.java",
    "line": 42,
    "confidence": "high",
-   "source": "@Override\npublic Account find(Long id) {\n    return accountRepository.findById(id).orElseThrow(() -> new IllegalArgumentException(\"no account \" + id));\n}",
+   "source": "@Override\npublic Account find(Long id) {\n    return accountRepository.findById(id)\n            .orElseThrow(() -> new IllegalArgumentException(\"no account \" + id));\n}",
    "hash": "419fd4132757"
   },
   {

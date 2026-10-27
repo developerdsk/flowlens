@@ -287,6 +287,18 @@ class FlowTest {
     }
 
     @Test
+    void sourceIsTheTextAsWrittenSoTheCallLineCanBeFound() throws Exception {
+        TestProject.Result r = new TestProject(Path.of("../examples/sample-app")).analyze();
+        Node create = r.node("AccountServiceImpl.create()");
+        Edge save = r.edgesTo("UPSERT account").stream().filter(e -> e.source.equals(create.id)).findFirst().orElseThrow();
+        List<String> lines = create.source.lines().toList();
+        assertEquals("@Override", lines.get(0));
+        assertEquals("", lines.get(5), "blank lines are kept");
+        assertEquals("    Account saved = accountRepository.save(account);", lines.get(save.line - create.line));
+        assertEquals("}", lines.get(lines.size() - 1));
+    }
+
+    @Test
     void repeatedCallsKeepTheFirstCallSite() throws Exception {
         TestProject.Result r = base()
                 .java("demo/C.java", """

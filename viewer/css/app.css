@@ -262,6 +262,35 @@ main { flex: 1; display: flex; min-height: 0; }
 
 /* --- detail panel ---------------------------------------------------------------------------- */
 .panel h2 { font-size: 15px; margin: 0 0 6px; word-break: break-word; }
+.d-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.d-head .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--k-data); }
+.d-head h2 { margin: 0; font: 600 18px var(--font-mono); }
+.d-head .sub { font-size: 12px; color: var(--muted); word-break: break-word; }
+.mono { font-family: var(--font-mono); }
+.d-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.d-buttons button { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 500; }
+.d-buttons .count { color: var(--muted); font-weight: 400; }
+.d-buttons button.primary, .split summary.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.d-buttons button.primary:hover, .split summary.primary:hover { background: var(--accent-hover); }
+.split { position: relative; display: flex; }
+.split > button.primary { border-radius: 8px 0 0 8px; }
+.split summary { list-style: none; display: flex; align-items: center; justify-content: center; width: 28px; height: 32px; border: 1px solid; border-left-color: color-mix(in srgb, var(--accent-text) 35%, var(--accent)); border-radius: 0 8px 8px 0; cursor: pointer; }
+.split summary::-webkit-details-marker { display: none; }
+.split summary::after { content: ""; border: 4px solid transparent; border-top-color: currentColor; margin-top: 4px; }
+.split .menu-pop { position: absolute; top: 36px; left: 0; z-index: 5; display: flex; flex-direction: column; min-width: 180px; }
+.split .menu-pop button { height: 30px; border: none; border-radius: 6px; background: none; justify-content: flex-start; font-weight: 400; }
+.split .menu-pop button:hover { background: var(--hover); }
+.d-ico { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.d-callers { margin: -6px 0 14px; }
+.sink { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; margin-bottom: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); text-align: left; }
+.sink .d-ico { color: var(--k-data); }
+.sink b { font: 600 12px var(--font-mono); }
+.sink small { margin-left: auto; font: 11px var(--font-mono); color: var(--muted); }
+.lineage { display: grid; grid-template-columns: auto 16px auto; justify-content: start; align-items: center; column-gap: 10px; row-gap: 6px; font: 12px var(--font-mono); }
+.lineage .arrow { color: var(--muted); text-align: center; }
+.lineage b { font-weight: 400; color: var(--op-write); }
+.muts { display: flex; flex-direction: column; gap: 4px; font: 12px var(--font-mono); color: var(--text2); word-break: break-word; }
+section.detail .title .loc { margin-left: 6px; font: 11px var(--font-mono); text-transform: none; letter-spacing: 0; }
 .badges { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
 .badge.warn { color: var(--op-update); border-color: color-mix(in srgb, var(--op-update) 50%, var(--line)); }
@@ -293,6 +322,10 @@ pre.source, pre.sql {
   font: 12px/1.5 var(--font-mono); color: var(--code-text); margin: 0; white-space: pre;
 }
 pre.sql { white-space: pre-wrap; }
+pre.source { padding: 10px 0; max-height: 360px; overflow: auto; position: relative; }
+pre.source .row { display: block; padding: 0 12px; min-width: max-content; }
+pre.source .row i { display: inline-block; min-width: 2.5em; margin-right: 8px; font-style: normal; text-align: right; color: var(--faint); user-select: none; }
+pre.source .row.hit { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
 .tok-kw { color: var(--tok-kw); } .tok-str { color: var(--tok-str); } .tok-com { color: var(--tok-com); font-style: italic; }
 .tok-num { color: var(--tok-num); } .tok-ann { color: var(--tok-ann); } .tok-type { color: var(--tok-type); }
 .hint { color: var(--muted); font-size: 12px; }

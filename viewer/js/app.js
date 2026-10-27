@@ -71,7 +71,7 @@ let flow, sidebar, detail, minimap, processView;
   });
   minimap = new Minimap($('#minimap'), () => flow.cy);
   processView = new ProcessView($('#process'), {
-    onSelect: id => selectNode(id, { fromGraph: true }),
+    onSelect: (id, via) => selectNode(id, { fromGraph: true, via }),
     onZoom: s => { $('#pvZoom').textContent = Math.round(s * 100) + '%'; },
   });
   $('#optProcess').checked = !!state.processPreview;
@@ -314,7 +314,7 @@ function toggleFocus(id) {
   minimap.schedule();
 }
 
-function selectNode(id, { fromGraph = false } = {}) {
+function selectNode(id, { fromGraph = false, via = null } = {}) {
   const n = flow.byId?.get(id);
   if (!n) return;
   app.selected = id;
@@ -330,6 +330,7 @@ function selectNode(id, { fromGraph = false } = {}) {
   detail.show(n, {
     graph: app.graph, outgoing, incoming,
     collapsed: flow.collapsed.has(id), focused: flow.view.mode === 'focus' && flow.view.id === id,
+    via, caller: via ? flow.byId.get(via.source) : null, inProcess: !$('#process').hidden,
   });
 }
 
