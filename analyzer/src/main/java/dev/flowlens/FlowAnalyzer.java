@@ -95,6 +95,9 @@ public class FlowAnalyzer {
     private record Site(Position at, Integer line) {}
     private final Map<dev.flowlens.model.Edge, Site> sites = new LinkedHashMap<>();
 
+    private Map<CompilationUnit, SourceFile> origins = Map.of();
+    private final Map<SourceFile, List<String>> fileLines = new IdentityHashMap<>();
+
     // ------------------------------------------------------------------------------------------
     // entry points
     // ------------------------------------------------------------------------------------------
@@ -136,6 +139,7 @@ public class FlowAnalyzer {
         graph.stats.xmlMappers = set.mapperXml.size();
 
         Map<CompilationUnit, SourceFile> origins = parseAll(set.javaFiles, cache);
+        this.origins = origins;
         List<CompilationUnit> units = new ArrayList<>(origins.keySet());
         units.sort(Comparator.comparing(cu -> origins.get(cu).path == null ? "" : origins.get(cu).path));
         graph.stats.filesParsed = units.size();
@@ -645,8 +649,31 @@ public class FlowAnalyzer {
                 : md.findCompilationUnit().flatMap(CompilationUnit::getStorage).map(s -> s.getFileName()).orElse(null);
         if (node.module == null && owner != null) node.module = owner.module;
         String src = md.toString();
-        node.source = truncate(src, 4000);
+        node.source = truncate(originalText(md).orElse(src), 4000);
         node.hash = sha1(src).substring(0, 12);
+    }
+
+    /** The declaration as written (blank lines and comments kept), so source line i is node.line + i. */
+    private Optional<String> originalText(Node md) {
+        SourceFile sf = md.findCompilationUnit().map(origins::get).orElse(null);
+        if (sf == null || md.getRange().isEmpty()) return Optional.empty();
+        List<String> lines = fileLines.computeIfAbsent(sf, f -> f.content.lines().toList());
+        int from = md.getRange().get().begin.line - 1, to = md.getRange().get().end.line;
+        if (from < 0 || to > lines.size()) return Optional.empty();
+        List<String> body = lines.subList(from, to);
+        int indent = leadingSpace(body.get(0));
+        StringBuilder out = new StringBuilder();
+        for (String l : body) {
+            if (out.length() > 0) out.append('\n');
+            out.append(l.substring(Math.min(indent, leadingSpace(l))).stripTrailing());
+        }
+        return Optional.of(out.toString());
+    }
+
+    private static int leadingSpace(String s) {
+        int i = 0;
+        while (i < s.length() && Character.isWhitespace(s.charAt(i))) i++;
+        return i;
     }
 
     private static void add(List<String> list, String v) {

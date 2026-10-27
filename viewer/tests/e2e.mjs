@@ -100,9 +100,28 @@ try {
     assert.match(await page.textContent('#pvContext'), /1 decision · 1 error end · 2 sub-processes/);
   });
 
+  await step('step detail panel: kind, caller, writes, lineage, source at the call line', async () => {
+    await page.click('.pv-step:has-text("save()")');
+    assert.equal(await page.textContent('#panel .eyebrow'), 'Repository call');
+    assert.equal(await page.textContent('#panel .sub'), 'AccountRepository · called from AccountServiceImpl.create()');
+    assert.match(await page.textContent('#panel .sink'), /account\s*UPSERT/);
+    assert.match(await page.textContent('#panel .lineage'), /request\.email\s*→\s*account\.email/);
+    assert.match(await page.textContent('#panel .muts'), /account\.setStatus\("ACTIVE" \| "PENDING"\)/);
+    assert.match(await page.textContent('#panel pre.source .hit'), /^36\s*Account saved = accountRepository\.save\(account\);/);
+    assert.match(await page.getAttribute('#panel .split button.primary', 'data-href'), /AccountServiceImpl\.java:36$/);
+    await page.click('#panel [data-act="callers"]');
+    assert.equal(await page.isVisible('#panel .d-callers'), true);
+    await page.click('.pv-step:has-text("record()")');
+    assert.equal(await page.textContent('#panel .eyebrow'), 'Service call');
+    assert.match(await page.textContent('#panel pre.source .hit'), /^37\s*auditService\.record/);
+    assert.match(await page.textContent('#panel .sink'), /audit_log\s*INSERT/);
+    await page.click('.pv-event.end.error');
+    assert.equal(await page.textContent('#panel .eyebrow'), 'Error end');
+  });
+
   await step('process view: select, keyboard, switch to call graph, turn off', async () => {
     await page.click('.pv-step:has-text("save()")');
-    assert.equal(await page.textContent('#panel h2'), 'UPSERT account');
+    assert.equal(await page.textContent('#panel h2'), 'save()');
     assert.equal(await page.$$eval('.pv-node.selected', els => els.length), 2, 'the step and its table card');
     await page.focus('.pv-node[data-order="0"]');
     await page.keyboard.press('ArrowRight');

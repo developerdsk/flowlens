@@ -38,7 +38,7 @@ export class ProcessView {
     this.model = null;
     this.stage.addEventListener('click', e => {
       const el = e.target.closest('[data-node-id]');
-      if (el) this.h.onSelect(el.dataset.nodeId);
+      if (el) this.h.onSelect(el.dataset.nodeId, this.via(el.dataset.pv));
     });
     this.stage.addEventListener('keydown', e => this.onKey(e));
   }
@@ -224,6 +224,14 @@ export class ProcessView {
     this.order = [...this.stage.querySelectorAll('.pv-node')].sort((a, b) =>
       a.parentElement.offsetLeft - b.parentElement.offsetLeft || a.parentElement.offsetTop - b.parentElement.offsetTop);
     this.order.forEach((el, i) => { el.dataset.order = i; el.tabIndex = i === 0 ? 0 : -1; });
+  }
+
+  /** The call that reached a drawn element: its edge and call line, for the detail panel. */
+  via(pvId) {
+    const p = this.model;
+    const stepId = p.tables.find(t => t.id === pvId)?.step ?? p.systems.find(s => s.id === pvId)?.step ?? pvId;
+    const step = p.steps.find(s => s.id === stepId);
+    return step?.edge && step.kind !== 'publish' ? { ...step.edge, line: step.line } : null;
   }
 
   /** Highlight every element drawn for a graph node. */
