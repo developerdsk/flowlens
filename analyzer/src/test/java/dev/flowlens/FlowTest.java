@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -267,5 +268,66 @@ class FlowTest {
                         """)
                 .analyze();
         assertEquals(List.of("SELECT order"), r.flowOf("GET /o"));
+    }
+
+    @Test
+    void stepsAreOrderedBySourcePositionWithTheirCallLine() throws Exception {
+        TestProject.Result r = new TestProject(Path.of("../examples/sample-app")).analyze();
+        Node create = r.node("AccountServiceImpl.create()");
+        List<Edge> out = r.graph.edges.stream().filter(e -> e.source.equals(create.id))
+                .sorted(Comparator.comparing(e -> e.seq)).toList();
+        assertEquals(List.of("SELECT account", "if (accountRepository.existsByEmail(request.getEmail()))",
+                "UPSERT account", "AuditService.record()", "WelcomeMailer.onAccountCreated()"),
+                out.stream().map(e -> r.graph.get(e.target).label).toList());
+        assertEquals(List.of(1, 2, 3, 4, 5), out.stream().map(e -> e.seq).toList());
+        assertEquals(List.of(22, 22, 36, 37, 38), out.stream().map(e -> e.line).toList());
+        Edge thrown = r.edgesTo("throw IllegalStateException").get(0);
+        assertEquals(23, thrown.line);
+        assertEquals(1, thrown.seq);
+    }
+
+    @Test
+    void repeatedCallsKeepTheFirstCallSite() throws Exception {
+        TestProject.Result r = base()
+                .java("demo/C.java", """
+                        package demo;
+                        @org.springframework.web.bind.annotation.RestController
+                        public class C {
+                            AccountRepository repo;
+                            @org.springframework.web.bind.annotation.PostMapping("/x")
+                            public void x(Account a, boolean again) {
+                                repo.existsByEmail("a");
+                                repo.save(a);
+                                repo.existsByEmail("b");
+                            }
+                        }
+                        """)
+                .analyze();
+        Edge select = r.edgesTo("SELECT accounts").get(0);
+        Edge save = r.edgesTo("UPSERT accounts").get(0);
+        assertEquals(7, select.line);
+        assertEquals(1, select.seq);
+        assertEquals(8, save.line);
+        assertEquals(2, save.seq);
+    }
+
+    @Test
+    void endpointsAndMethodsCarryTheirSimpleReturnType() throws Exception {
+        TestProject.Result sample = new TestProject(Path.of("../examples/sample-app")).analyze();
+        assertEquals("Account", sample.node("AccountController.createAccount()").returns);
+        assertEquals("void", sample.node("AuditService.record()").returns);
+        assertNull(sample.node("SELECT account").returns);
+
+        TestProject.Result r = base()
+                .java("demo/C.java", """
+                        package demo;
+                        @org.springframework.web.bind.annotation.RestController
+                        public class C {
+                            @org.springframework.web.bind.annotation.GetMapping("/l")
+                            public org.springframework.http.ResponseEntity<java.util.List<demo.Account>> l() { return null; }
+                        }
+                        """)
+                .analyze();
+        assertEquals("ResponseEntity<List<Account>>", r.endpoint("GET /l").returns);
     }
 }

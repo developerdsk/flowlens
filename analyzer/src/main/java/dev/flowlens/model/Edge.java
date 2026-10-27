@@ -11,6 +11,10 @@ public class Edge {
     public String kind;
     /** Diff mode: added | removed (null = unchanged or no diff). */
     public String diff;
+    /** Line of the call site (or of the guard, for edges into a branch node). */
+    public Integer line;
+    /** 1-based position of the call within the calling method, in source order. */
+    public Integer seq;
 
     public Edge() {}
 

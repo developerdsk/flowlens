@@ -3,6 +3,7 @@ package dev.flowlens;
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseResult;
 import com.github.javaparser.ParserConfiguration;
+import com.github.javaparser.Position;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.CallableDeclaration;
@@ -89,6 +90,10 @@ public class FlowAnalyzer {
     private final Set<String> walked = new HashSet<>();
 
     private record WalkItem(String nodeId, Node body, TypeInfo owner) {}
+
+    /** Where an edge of the method being walked sits: the earliest site that produced it. */
+    private record Site(Position at, Integer line) {}
+    private final Map<dev.flowlens.model.Edge, Site> sites = new LinkedHashMap<>();
 
     // ------------------------------------------------------------------------------------------
     // entry points
@@ -293,6 +298,21 @@ public class FlowAnalyzer {
             tn.source = oneLine(truncate(th.toString(), 300));
             link(nodeId, body, th, id, "throws", "flow", "high");
         }
+        numberSites();
+    }
+
+    /** Give the edges of the method just walked their call line, and number each node's outgoing edges in source order. */
+    private void numberSites() {
+        Map<String, List<dev.flowlens.model.Edge>> bySource = new HashMap<>();
+        sites.forEach((e, s) -> {
+            e.line = s.line();
+            bySource.computeIfAbsent(e.source, k -> new ArrayList<>()).add(e);
+        });
+        for (List<dev.flowlens.model.Edge> out : bySource.values()) {
+            out.sort(Comparator.comparing(e -> sites.get(e).at()));
+            for (int i = 0; i < out.size(); i++) out.get(i).seq = i + 1;
+        }
+        sites.clear();
     }
 
     /** True if {@code n} is directly inside {@code body}, not inside a nested/local type declaration. */
@@ -503,7 +523,8 @@ public class FlowAnalyzer {
     // branch guards: the if/else/switch/loop/catch a call sits under become graph nodes
     // ------------------------------------------------------------------------------------------
 
-    private record Guard(Node node, String label, String side) {}
+    /** {@code guarded} is the part the guard decides on (then/else/body): it orders the guard after its condition. */
+    private record Guard(Node node, Node guarded, String label, String side) {}
 
     private void link(String fromId, Node body, Node site, String targetId, String callLabel, String kind, String confidence) {
         List<Guard> guards = guardsFor(site, body);
@@ -516,12 +537,21 @@ public class FlowAnalyzer {
             gn.line = g.node().getBegin().map(p -> p.line).orElse(null);
             dev.flowlens.model.Node from = graph.get(fromId);
             if (from != null) gn.file = from.file;
-            graph.addEdge(prev, gid, prevSide == null ? "" : prevSide, "branch", "high");
+            edge(prev, gid, prevSide == null ? "" : prevSide, "branch", "high", g.guarded(), g.node());
             prev = gid;
             prevSide = g.side();
         }
         String label = prevSide == null ? callLabel : prevSide + " · " + callLabel;
-        graph.addEdge(prev, targetId, label, kind, confidence);
+        edge(prev, targetId, label, kind, confidence, site, site);
+    }
+
+    private void edge(String from, String to, String label, String kind, String confidence, Node orderBy, Node lineOf) {
+        dev.flowlens.model.Edge e = graph.addEdge(from, to, label, kind, confidence);
+        if (e == null) e = graph.edge(from, to, label);
+        Position at = orderBy.getBegin().orElse(null);
+        if (e == null || at == null) return;
+        Site site = new Site(at, lineOf.getBegin().map(p -> p.line).orElse(null));
+        sites.merge(e, site, (a, b) -> b.at().isBefore(a.at()) ? b : a);
     }
 
     private static List<Guard> guardsFor(Node site, Node body) {
@@ -531,31 +561,31 @@ public class FlowAnalyzer {
         while (cur != null && cur != body) {
             if (cur instanceof IfStmt is) {
                 String cond = "if (" + oneLine(truncate(is.getCondition().toString(), 80)) + ")";
-                if (child == is.getThenStmt()) out.add(new Guard(is, cond, "then"));
-                else if (is.getElseStmt().isPresent() && child == is.getElseStmt().get()) out.add(new Guard(is, cond, "else"));
+                if (child == is.getThenStmt()) out.add(new Guard(is, child, cond, "then"));
+                else if (is.getElseStmt().isPresent() && child == is.getElseStmt().get()) out.add(new Guard(is, child, cond, "else"));
             } else if (cur instanceof ConditionalExpr ce) {
                 String cond = oneLine(truncate(ce.getCondition().toString(), 80)) + " ?";
-                if (child == ce.getThenExpr()) out.add(new Guard(ce, cond, "then"));
-                else if (child == ce.getElseExpr()) out.add(new Guard(ce, cond, "else"));
+                if (child == ce.getThenExpr()) out.add(new Guard(ce, child, cond, "then"));
+                else if (child == ce.getElseExpr()) out.add(new Guard(ce, child, cond, "else"));
             } else if (cur instanceof SwitchEntry se) {
                 Node sw = se.getParentNode().orElse(null);
                 Expression selector = sw instanceof SwitchStmt ss ? ss.getSelector() : sw instanceof SwitchExpr sx ? sx.getSelector() : null;
                 if (selector != null && child != selector) {
                     String side = se.getLabels().isEmpty() ? "default"
                             : "case " + oneLine(truncate(se.getLabels().toString().replaceAll("^\\[|]$", ""), 40));
-                    out.add(new Guard(sw, "switch (" + oneLine(truncate(selector.toString(), 60)) + ")", side));
+                    out.add(new Guard(sw, se, "switch (" + oneLine(truncate(selector.toString(), 60)) + ")", side));
                 }
             } else if (cur instanceof ForEachStmt fe && child == fe.getBody()) {
-                out.add(new Guard(fe, "for (" + fe.getVariableDeclarator().getNameAsString() + " : "
+                out.add(new Guard(fe, child, "for (" + fe.getVariableDeclarator().getNameAsString() + " : "
                         + oneLine(truncate(fe.getIterable().toString(), 50)) + ")", "each"));
             } else if (cur instanceof ForStmt fs && child == fs.getBody()) {
-                out.add(new Guard(fs, "for (" + fs.getCompare().map(c -> oneLine(truncate(c.toString(), 50))).orElse("") + ")", "loop"));
+                out.add(new Guard(fs, child, "for (" + fs.getCompare().map(c -> oneLine(truncate(c.toString(), 50))).orElse("") + ")", "loop"));
             } else if (cur instanceof WhileStmt ws && child == ws.getBody()) {
-                out.add(new Guard(ws, "while (" + oneLine(truncate(ws.getCondition().toString(), 60)) + ")", "loop"));
+                out.add(new Guard(ws, child, "while (" + oneLine(truncate(ws.getCondition().toString(), 60)) + ")", "loop"));
             } else if (cur instanceof DoStmt ds && child == ds.getBody()) {
-                out.add(new Guard(ds, "do … while (" + oneLine(truncate(ds.getCondition().toString(), 50)) + ")", "loop"));
+                out.add(new Guard(ds, child, "do … while (" + oneLine(truncate(ds.getCondition().toString(), 50)) + ")", "loop"));
             } else if (cur instanceof CatchClause cc && child == cc.getBody()) {
-                out.add(new Guard(cc, "catch (" + cc.getParameter().getType() + ")", "on error"));
+                out.add(new Guard(cc, child, "catch (" + cc.getParameter().getType() + ")", "on error"));
             } else if (cur instanceof CallableDeclaration<?> || cur instanceof TypeDeclaration<?>) {
                 break;
             }
@@ -609,6 +639,7 @@ public class FlowAnalyzer {
                 add(node.mutations, oneLine(truncate(c.toString(), 90)));
             }
         }
+        if (md instanceof MethodDeclaration m) node.returns = simpleType(m.getType().toString());
         node.line = md.getBegin().map(p -> p.line).orElse(null);
         node.file = owner != null && owner.file != null ? owner.file
                 : md.findCompilationUnit().flatMap(CompilationUnit::getStorage).map(s -> s.getFileName()).orElse(null);
@@ -634,6 +665,11 @@ public class FlowAnalyzer {
         if (name.length() > 3 && (name.startsWith("get") || name.startsWith("set"))
                 && Character.isUpperCase(name.charAt(3))) return true;
         return name.length() > 2 && name.startsWith("is") && Character.isUpperCase(name.charAt(2));
+    }
+
+    /** "java.util.List<com.acme.Order>" -> "List<Order>". */
+    static String simpleType(String type) {
+        return oneLine(type.replaceAll("@[\\w.]+(\\([^)]*\\))?\\s*", "").replaceAll("\\b(?:[a-z_$][\\w$]*\\.)+(?=[A-Za-z_$])", ""));
     }
 
     static String oneLine(String s) {

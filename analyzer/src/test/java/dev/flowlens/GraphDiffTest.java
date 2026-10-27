@@ -33,6 +33,7 @@ class GraphDiffTest {
         assertNotNull(r.endpoint("GET /b").diff);
         assertNull(r.endpoint("GET /c").diff);
         Node removed = r.node("S.old()");
-        assertTrue(d.edges.stream().anyMatch(e -> e.target.equals(removed.id) && "removed".equals(e.diff)));
+        assertTrue(d.edges.stream().anyMatch(e -> e.target.equals(removed.id) && "removed".equals(e.diff)
+                && Integer.valueOf(1).equals(e.line) && Integer.valueOf(1).equals(e.seq)));
     }
 }

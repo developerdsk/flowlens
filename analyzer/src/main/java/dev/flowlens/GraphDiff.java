@@ -51,7 +51,10 @@ public final class GraphDiff {
         for (Edge b : base.edges) {
             if (currentEdges.contains(b.key())) continue;
             Edge ghost = out.addEdge(b.source, b.target, b.label, b.kind, b.confidence);
-            if (ghost != null) ghost.diff = "removed";
+            if (ghost == null) continue;
+            ghost.diff = "removed";
+            ghost.line = b.line;
+            ghost.seq = b.seq;
         }
 
         // endpoints affected by any change in their (old or new) flow
