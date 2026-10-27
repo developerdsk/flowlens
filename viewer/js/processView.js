@@ -1,7 +1,7 @@
 // The process view: an endpoint's flow (js/process.js) drawn as steps in lanes. ELK lays out the
 // service lane (opened sub-processes are compound nodes); tables, async listeners and external
 // systems sit in their lanes under the step that uses them, so their connectors stay short and straight.
-import { esc } from './util.js';
+import { esc, cssVar } from './util.js';
 import { buildProcess, MAX_DEPTH } from './process.js';
 
 const BOX = { w: 184, h: 64 };
@@ -265,7 +265,9 @@ export class ProcessView {
   // drawing
   // ------------------------------------------------------------------------------------------
 
-  render(p, { box, paths, lanes, width, height }) {
+  render(p, placed) {
+    const { box, paths, lanes, width, height } = placed;
+    this.placed = placed;
     this.size = { width, height };
     const at = (id, cls, html) => {
       const b = box.get(id);
@@ -273,7 +275,9 @@ export class ProcessView {
     };
     const button = (id, nodeId, cls, label, inner) =>
       `<button class="pv-node ${cls}" data-node-id="${esc(nodeId)}" data-pv="${esc(id)}" aria-label="${esc(label)}">${inner}</button>`;
-    const nodeBtn = (id, nodeId, cls, label, inner, extra = '') => at(id, '', button(id, nodeId, cls, label, inner) + extra);
+    const nodeBtn = (id, nodeId, cls, label, inner, extra = '', diff = null) =>
+      at(id, diff ? `diff-${diff}` : '', button(id, nodeId, cls + (diff ? ` diff-${diff}` : ''), diff ? `${label} (${diff})` : label, inner) + extra +
+        (diff ? `<span class="pv-diff ${diff}">${diff}</span>` : ''));
     const subs = new Map(p.subprocesses.map(x => [x.id, x]));
     const toggle = (st, open) => {
       const sub = subs.get(st.id);
@@ -286,9 +290,10 @@ export class ProcessView {
     for (const l of lanes) out.push(`<div class="pv-lane" style="top:${l.top}px;height:${l.height}px"><span class="pv-lane-label">${esc(l.label)}</span></div>`);
     for (const st of p.steps) {
       if (box.get(st.id)?.kind !== 'container') continue;
-      out.push(at(st.id, 'pv-container' + (st.lane === 'async' ? ' async' : ''),
-        `<div class="pv-ctitle">${button(st.id, st.nodeId, 'pv-cname', `${st.name} — ${st.owner || ''}`,
-          `<b>${esc(st.name)}</b><small>${esc(st.owner || '')}${st.listener ? ' · listener' : ''}</small>`)}${toggle(st, true)}</div>`));
+      out.push(at(st.id, 'pv-container' + (st.lane === 'async' ? ' async' : '') + (st.diff ? ` diff-${st.diff}` : ''),
+        `<div class="pv-ctitle">${button(st.id, st.nodeId, 'pv-cname', `${st.name} — ${st.owner || ''}${st.diff ? ` (${st.diff})` : ''}`,
+          `<b>${esc(st.name)}</b><small>${esc(st.owner || '')}${st.listener ? ' · listener' : ''}</small>`)}${toggle(st, true)}</div>` +
+        (st.diff ? `<span class="pv-diff ${st.diff}">${st.diff}</span>` : '')));
     }
     out.push(`<svg class="pv-wires" width="${width}" height="${height}" aria-hidden="true"><defs>${
       ['sequence', 'branch', 'inferred', 'read', 'write', 'async', 'error'].map(k =>
@@ -311,7 +316,7 @@ export class ProcessView {
     for (const st of p.steps) {
       if (!box.has(st.id) || box.get(st.id).kind === 'container') continue;
       if (st.kind === 'publish') {
-        out.push(nodeBtn(st.id, st.nodeId, 'pv-event publish', `Publishes ${st.owner}`, icon('async')));
+        out.push(nodeBtn(st.id, st.nodeId, 'pv-event publish', `Publishes ${st.owner}`, icon('async'), '', st.diff));
         out.push(caption(st.id, box, `<b>publishEvent</b><small>${esc(st.owner)}</small>`));
         continue;
       }
@@ -320,27 +325,27 @@ export class ProcessView {
       const nodeId = st.kind === 'data' ? st.edge.target : st.nodeId;
       out.push(nodeBtn(st.id, nodeId, `pv-step k-${kind} ${flags}`, `${st.name} — ${st.owner || ''}`,
         `${icon(kind, 'tile')}<span class="pv-text"><b>${esc(st.name)}</b><small>${esc(st.owner || '')}${st.recursive ? ' · recursive call' : ''}</small></span>`,
-        st.kind === 'subprocess' ? toggle(st, false) : ''));
+        st.kind === 'subprocess' ? toggle(st, false) : '', st.diff));
     }
     for (const d of p.decisions) {
       if (!box.has(d.id)) continue;
       out.push(nodeBtn(d.id, d.nodeId, 'pv-decision', `Decision: ${d.condition}`,
-        `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="diamond" d="M24 1.5 46.5 24 24 46.5 1.5 24Z"/></svg>${icon('decision', 'mark')}`));
+        `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="diamond" d="M24 1.5 46.5 24 24 46.5 1.5 24Z"/></svg>${icon('decision', 'mark')}`, '', d.diff));
       out.push(caption(d.id, box, `<b>${esc(d.label)}</b>`, 'above'));
     }
     for (const e of p.ends) {
       if (!box.has(e.id)) continue;
       const error = e.kind === 'error';
-      out.push(nodeBtn(e.id, e.nodeId, `pv-event end ${error ? 'error' : ''}`, error ? `Error end: ${e.label}` : `End: returns ${e.label || 'nothing'}`, error ? icon('error') : ''));
+      out.push(nodeBtn(e.id, e.nodeId, `pv-event end ${error ? 'error' : ''}`, error ? `Error end: ${e.label}` : `End: returns ${e.label || 'nothing'}`, error ? icon('error') : '', '', e.diff));
       out.push(caption(e.id, box, error ? `<b>${esc(e.label)}</b>` : `<small>returns</small><b>${esc(e.label || 'void')}</b>`));
     }
     for (const t of p.tables) {
       out.push(nodeBtn(t.id, t.nodeId, 'pv-card', `${t.op} ${t.table}`,
-        `${icon('data', 'tile k-data')}<span class="pv-text"><b>${esc(t.table)}</b></span><span class="op ${esc(t.op)}">${esc(t.op)}</span>`));
+        `${icon('data', 'tile k-data')}<span class="pv-text"><b>${esc(t.table)}</b></span><span class="op ${esc(t.op)}">${esc(t.op)}</span>`, '', t.diff));
     }
     for (const sys of p.systems) {
       out.push(nodeBtn(sys.id, sys.nodeId, 'pv-card', `${sys.name} ${sys.detail}`,
-        `${icon(sys.kind === 'topic' ? 'topic' : 'http', 'tile k-async')}<span class="pv-text"><b>${esc(sys.name)}</b><small>${esc(sys.detail)}</small></span>`));
+        `${icon(sys.kind === 'topic' ? 'topic' : 'http', 'tile k-async')}<span class="pv-text"><b>${esc(sys.name)}</b><small>${esc(sys.detail)}</small></span>`, '', sys.diff));
     }
     this.stage.style.width = width + 'px';
     this.stage.style.height = height + 'px';
@@ -375,6 +380,122 @@ export class ProcessView {
     next.tabIndex = 0;
     next.focus({ preventScroll: true });
     next.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // export
+  // ------------------------------------------------------------------------------------------
+
+  /** A standalone SVG of the process on screen (what is open, the compare marks, the current theme's colours). */
+  toSvg() {
+    const p = this.model, placed = this.placed;
+    if (!p || !placed) return null;
+    const { box, paths, lanes, width, height } = placed;
+    const v = name => cssVar(name);
+    const sans = v('--font-sans').replace(/"/g, "'"), mono = v('--font-mono').replace(/"/g, "'");
+    const fit = (text, px, size) => { const max = Math.max(3, Math.floor(px / (size * 0.62))); return text.length > max ? text.slice(0, max - 1) + '…' : text; };
+    const txt = (x, y, text, { size = 11, weight = 400, color = v('--text'), font = sans, anchor = 'start', strike = false } = {}) =>
+      `<text x="${x}" y="${y}" font-family="${font}" font-size="${size}" font-weight="${weight}" fill="${color}" text-anchor="${anchor}"${strike ? ' text-decoration="line-through"' : ''}>${esc(text)}</text>`;
+    const diffStroke = d => (d === 'added' ? [v('--diff-added'), 2, ''] : d === 'changed' ? [v('--diff-changed'), 2, ''] : d === 'removed' ? [v('--diff-removed'), 1.5, ' stroke-dasharray="5 3"'] : [v('--line-strong'), 1, '']);
+    const diffFill = d => (d === 'added' ? v('--diff-added-bg') : d === 'changed' ? v('--diff-changed-bg') : d === 'removed' ? v('--panel2') : v('--panel'));
+    const badge = (b, d) => (d ? `<rect x="${b.x + b.w - 70}" y="${b.y - 8}" width="62" height="15" rx="3" fill="${v('--panel')}" stroke="${diffStroke(d)[0]}"/>${txt(b.x + b.w - 39, b.y + 3, d.toUpperCase(), { size: 9, weight: 600, color: diffStroke(d)[0], font: mono, anchor: 'middle' })}` : '');
+    const WIRE = {
+      sequence: [v('--c-sequence'), 2, ''], branch: [v('--c-sequence'), 2, ''], error: [v('--k-error'), 2, ''], inferred: [v('--c-inferred'), 2, '6 4'],
+      read: [v('--c-read'), 1.5, '2 4'], write: [v('--c-write'), 1.5, '2 4'], async: [v('--c-async'), 1.5, '6 4'],
+    };
+    const out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`];
+    out.push(`<defs>${Object.entries(WIRE).map(([k, [c]]) => `<marker id="a-${k}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8z" fill="${c}"/></marker>`).join('')}</defs>`);
+    out.push(`<rect width="100%" height="100%" fill="${v('--panel')}"/>`);
+    lanes.forEach((l, i) => {
+      out.push(`<rect x="0" y="${l.top}" width="${width}" height="${l.height}" fill="${i % 2 ? v('--panel2') : v('--panel')}"/><line x1="0" x2="${width}" y1="${l.top + l.height}" y2="${l.top + l.height}" stroke="${v('--line')}"/>`);
+      out.push(txt(14, l.top + 24, l.label.toUpperCase(), { size: 11, weight: 600, color: v('--muted') }));
+    });
+    for (const st of p.steps) {
+      const b = box.get(st.id);
+      if (b?.kind !== 'container') continue;
+      const [cs, cw, cd] = st.diff ? diffStroke(st.diff) : [v('--k-sub-line'), 1.5, ''];
+      out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="12" fill="${v('--k-sub-bg')}" stroke="${cs}" stroke-width="${cw}"${cd}/>`);
+      out.push(badge({ ...b, w: b.w - 40 }, st.diff));
+      out.push(txt(b.x + 18, b.y + 28, st.name, { size: 12, weight: 600, color: v('--k-sub'), font: mono }) + txt(b.x + 26 + st.name.length * 7.5, b.y + 28, st.owner || '', { color: v('--muted') }));
+    }
+    for (const c of paths) {
+      const kind = c.kind === 'branch' && p.ends.some(e => e.id === c.to && e.kind === 'error') ? 'error' : c.kind;
+      const [color, w, dash] = WIRE[kind] || WIRE.sequence;
+      out.push(`<polyline points="${c.points.map(q => `${q.x},${q.y}`).join(' ')}" fill="none" stroke="${color}" stroke-width="${w}"${dash ? ` stroke-dasharray="${dash}"` : ''} stroke-linejoin="round" marker-end="url(#a-${kind in WIRE ? kind : 'sequence'})"/>`);
+      if (c.label) {
+        const [a, b2] = c.points;
+        const vertical = Math.abs(a.x - b2.x) < 1;
+        out.push(txt(a.x + (vertical ? 8 : 10), a.y + (vertical ? 18 : -8), c.label, { size: 11, color: v('--muted') }));
+      }
+    }
+    const caption = (b, lines) => lines.forEach(([text, opts], i) => out.push(txt(b.x + b.w / 2, b.y + b.h + 16 + i * 14, text, { size: 11, anchor: 'middle', ...opts })));
+    const s0 = p.start, sb = box.get('start');
+    out.push(`<circle cx="${sb.x + sb.w / 2}" cy="${sb.y + sb.h / 2}" r="${sb.w / 2 - 1}" fill="${v('--panel')}" stroke="${v('--k-start')}" stroke-width="2"/>`);
+    out.push(txt(sb.x, sb.y + (sb.h + BOX.h) / 2 + 18, fit(s0.http || s0.handler, 150, 11), { weight: 600, font: mono }) + txt(sb.x, sb.y + (sb.h + BOX.h) / 2 + 32, s0.handler, { color: v('--muted') }));
+    for (const st of p.steps) {
+      const b = box.get(st.id);
+      if (!b || b.kind === 'container') continue;
+      const [stroke, sw, dash] = diffStroke(st.diff);
+      if (st.kind === 'publish') {
+        out.push(`<circle cx="${b.x + b.w / 2}" cy="${b.y + b.h / 2}" r="${b.w / 2 - 1}" fill="${v('--k-async')}" stroke="${st.diff ? stroke : v('--k-async')}" stroke-width="${st.diff ? sw : 2}"${dash}/>`);
+        caption(b, [['publishEvent', { weight: 600, font: mono }], [st.owner, { color: v('--muted') }]]);
+      } else {
+        out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="10" fill="${diffFill(st.diff)}" stroke="${st.inferred && !st.diff ? v('--c-inferred') : stroke}" stroke-width="${sw}"${dash || (st.inferred ? ' stroke-dasharray="5 3"' : '')}/>`);
+        const tone = st.kind === 'data' ? '--k-data' : st.listener ? '--k-async' : '--k-service';
+        out.push(`<rect x="${b.x + 10}" y="${b.y + b.h / 2 - 12}" width="24" height="24" rx="6" fill="${v(tone + '-bg')}"/><rect x="${b.x + 17}" y="${b.y + b.h / 2 - 5}" width="10" height="10" rx="2" fill="none" stroke="${v(tone)}" stroke-width="1.5"/>`);
+        const strike = st.diff === 'removed';
+        out.push(txt(b.x + 42, b.y + b.h / 2 - 3, fit(st.name, b.w - 70, 12), { size: 12, weight: 600, font: mono, strike }));
+        out.push(txt(b.x + 42, b.y + b.h / 2 + 13, fit((st.owner || '') + (st.recursive ? ' · recursive call' : ''), b.w - 70, 11), { color: v('--muted'), strike }));
+        if (st.kind === 'subprocess') out.push(`<rect x="${b.x + b.w - 30}" y="${b.y + b.h / 2 - 11}" width="22" height="22" rx="5" fill="${v('--panel2')}" stroke="${v('--line-strong')}"/>${txt(b.x + b.w - 19, b.y + b.h / 2 + 5, '+', { size: 14, weight: 600, color: v('--text2'), font: mono, anchor: 'middle' })}`);
+      }
+      out.push(badge(b, st.diff));
+    }
+    for (const d of p.decisions) {
+      const b = box.get(d.id);
+      if (!b) continue;
+      const cx = b.x + b.w / 2, cy = b.y + b.h / 2, r = b.w / 2 - 1;
+      out.push(`<path d="M${cx} ${cy - r} ${cx + r} ${cy} ${cx} ${cy + r} ${cx - r} ${cy}Z" fill="${v('--k-decision-bg')}" stroke="${d.diff ? diffStroke(d.diff)[0] : v('--k-decision')}" stroke-width="${d.diff ? 3 : 1.5}"/>`);
+      out.push(`<path d="M${cx - 5} ${cy - 5}l10 10M${cx + 5} ${cy - 5}l-10 10" stroke="${v('--k-decision')}" stroke-width="2.2" stroke-linecap="round"/>`);
+      out.push(txt(cx, b.y - 8, d.label, { size: 11, weight: 600, color: v('--k-decision-text'), font: mono, anchor: 'middle' }));
+    }
+    for (const e of p.ends) {
+      const b = box.get(e.id);
+      if (!b) continue;
+      const error = e.kind === 'error';
+      out.push(`<circle cx="${b.x + b.w / 2}" cy="${b.y + b.h / 2}" r="${b.w / 2 - 2}" fill="${v('--panel')}" stroke="${error ? v('--k-error') : v('--text')}" stroke-width="4"/>`);
+      caption(b, error ? [[e.label, { weight: 600, font: mono }]] : [['returns', { color: v('--muted') }], [e.label || 'void', { weight: 600, font: mono }]]);
+    }
+    for (const c of [...p.tables, ...p.systems]) {
+      const b = box.get(c.id);
+      if (!b) continue;
+      const [stroke, sw, dash] = diffStroke(c.diff);
+      const strike = c.diff === 'removed';
+      out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="8" fill="${diffFill(c.diff)}" stroke="${stroke}" stroke-width="${sw}"${dash}/>`);
+      out.push(txt(b.x + 12, b.y + (c.table ? b.h / 2 + 4 : b.h / 2 - 2), fit(c.table || c.name, b.w - 80, 12), { size: 12, weight: 600, font: mono, strike }));
+      if (c.op && c.table) out.push(txt(b.x + b.w - 10, b.y + b.h / 2 + 4, c.op, { size: 10, weight: 600, font: mono, anchor: 'end', color: c.op === 'SELECT' ? v('--op-select') : c.op === 'DELETE' ? v('--op-delete') : c.op === 'UPDATE' ? v('--op-update') : v('--op-write') }));
+      if (!c.table) out.push(txt(b.x + 12, b.y + b.h / 2 + 12, fit(c.detail || '', b.w - 20, 11), { color: v('--muted') }));
+      out.push(badge(b, c.diff));
+    }
+    out.push('</svg>');
+    return out.join('');
+  }
+
+  /** The SVG export drawn at 2x into a PNG data URI. */
+  async toPng() {
+    const svg = this.toSvg();
+    if (!svg) return null;
+    const { width, height } = this.placed;
+    const scale = Math.min(2, 12000 / Math.max(width, height));
+    const img = new Image();
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, 0, 0, width, height);
+    return canvas.toDataURL('image/png');
   }
 
   // ------------------------------------------------------------------------------------------

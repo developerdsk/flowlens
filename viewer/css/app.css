@@ -352,6 +352,7 @@ table.keys td { padding: 3px 12px 3px 0; }
 ul.list li.nav small { display: block; color: var(--muted); font-size: 11px; }
 .banner > * { white-space: nowrap; }
 .banner { max-width: calc(100% - 40px); flex-wrap: wrap; justify-content: center; }
+.canvas.pv-on .banner { z-index: 8; top: auto; bottom: 16px; }
 
 /* --- process view (preview) ------------------------------------------------------------------- */
 .process { position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; background: var(--bg); }
@@ -444,6 +445,24 @@ ul.list li.nav small { display: block; color: var(--muted); font-size: 11px; }
 .pv-caption b { font: 600 11px var(--font-mono); color: var(--text); }
 .pv-caption.above b { color: var(--k-decision-text); }
 .pv-caption.start { transform: none; align-items: flex-start; max-width: 150px; }
+.pv-node.diff-added { border: 2px solid var(--diff-added); background: var(--diff-added-bg); }
+.pv-node.diff-changed { border: 2px solid var(--diff-changed); background: var(--diff-changed-bg); }
+.pv-node.diff-removed { border: 1.5px dashed var(--diff-removed); background: var(--panel2); opacity: .8; }
+.pv-node.diff-removed b, .pv-node.diff-removed small { text-decoration: line-through; }
+.pv-decision.diff-added, .pv-decision.diff-changed, .pv-decision.diff-removed { border: none; background: none; }
+.pv-decision.diff-added .diamond { stroke: var(--diff-added); stroke-width: 3; }
+.pv-decision.diff-changed .diamond { stroke: var(--diff-changed); stroke-width: 3; }
+.pv-decision.diff-removed .diamond { stroke: var(--diff-removed); stroke-dasharray: 4 3; }
+.pv-diff {
+  position: absolute; top: -9px; right: 8px; z-index: 1; padding: 1px 6px; border-radius: 4px; pointer-events: none;
+  font: 600 10px/14px var(--font-mono); text-transform: uppercase; letter-spacing: .04em; background: var(--panel); border: 1px solid currentColor;
+}
+.pv-container.diff-added { border: 2px solid var(--diff-added); }
+.pv-container.diff-changed { border: 2px solid var(--diff-changed); }
+.pv-container.diff-removed { border: 1.5px dashed var(--diff-removed); }
+.pv-container > .pv-diff { right: 44px; }
+.pv-diff.added { color: var(--diff-added); } .pv-diff.changed { color: var(--diff-changed); } .pv-diff.removed { color: var(--diff-removed); }
+.pv-event + .pv-diff { right: auto; left: 50%; transform: translateX(-50%); top: -14px; }
 .pv-caption.start b, .pv-caption.start small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
 /* --- all-endpoints catalog (preview) ---------------------------------------------------------- */

@@ -467,7 +467,13 @@ async function doExport(kind) {
   if (!flow.cy) return;
   try {
     let saved;
-    if (kind === 'png') {
+    const process = !$('#process').hidden && (kind === 'png' || kind === 'svg');
+    if (process && kind === 'png') {
+      const uri = await processView.toPng();
+      saved = await platform.saveFile({ name: baseName() + '.png', mime: 'image/png', base64: uri.split(',')[1], filterName: 'PNG image', extensions: ['png'] });
+    } else if (process) {
+      saved = await platform.saveFile({ name: baseName() + '.svg', mime: 'image/svg+xml', text: processView.toSvg(), filterName: 'SVG image', extensions: ['svg'] });
+    } else if (kind === 'png') {
       const uri = toPng(flow.cy);
       saved = await platform.saveFile({ name: baseName() + '.png', mime: 'image/png', base64: uri.split(',')[1], filterName: 'PNG image', extensions: ['png'] });
     } else if (kind === 'svg') {

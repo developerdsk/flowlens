@@ -114,10 +114,10 @@ export function buildProcess(graph, endpointId, { expanded = [], index } = {}) {
   };
   usedIds.add('start');
 
-  function addCard(stepId, node, edge) {
+  function addCard(stepId, node, edge, diff) {
     const id = uniqueId(`${stepId}|${node.id}`);
-    if (node.type === 'db') p.tables.push({ id, step: stepId, nodeId: node.id, table: node.table, op: node.op, tech: node.tech, edge });
-    else p.systems.push({ id, step: stepId, nodeId: node.id, tech: node.tech, op: node.op, ...system(node), edge });
+    if (node.type === 'db') p.tables.push({ id, step: stepId, nodeId: node.id, table: node.table, op: node.op, tech: node.tech, edge, diff });
+    else p.systems.push({ id, step: stepId, nodeId: node.id, tech: node.tech, op: node.op, ...system(node), edge, diff });
     p.connectors.push(node.type === 'db' && READS.has(node.op)
       ? { from: id, to: stepId, kind: 'read' } : { from: stepId, to: id, kind: 'write' });
   }
@@ -131,7 +131,7 @@ export function buildProcess(graph, endpointId, { expanded = [], index } = {}) {
       for (const e of g.outOf(queue.shift())) {
         const t = g.byId.get(e.target);
         if (t.type === 'db' || t.type === 'external') {
-          if (!cards.has(t.id)) { cards.add(t.id); addCard(stepId, t, null); }
+          if (!cards.has(t.id)) { cards.add(t.id); addCard(stepId, t, null, diffOf(e, t)); }
         } else if (!seen.has(t.id)) {
           seen.add(t.id);
           queue.push(t.id);
@@ -141,7 +141,7 @@ export function buildProcess(graph, endpointId, { expanded = [], index } = {}) {
   }
 
   function step(fields) {
-    const s = { inferred: false, recursive: false, ...fields };
+    const s = { inferred: false, recursive: false, diff: null, ...fields };
     p.steps.push(s);
     return s;
   }
@@ -160,15 +160,15 @@ export function buildProcess(graph, endpointId, { expanded = [], index } = {}) {
       const call = splitCall(e.label);
       const s = step({
         id: uniqueId(`${ctx.prefix}/${e.label}`), kind: 'data', nodeId: ctx.nodeId, edge: edgeRef(e),
-        name: call.name, owner: call.owner, lane: ctx.lane, parent: ctx.parent, line: e.line, inferred,
+        name: call.name, owner: call.owner, lane: ctx.lane, parent: ctx.parent, line: e.line, inferred, diff: diffOf(e, t),
       });
-      addCard(s.id, t, edgeRef(e));
+      addCard(s.id, t, edgeRef(e), diffOf(e, t));
       return [{ type: 'step', id: s.id, inferred }];
     }
     if (t.type === 'throw') {
       const end = {
         id: uniqueId(`${ctx.prefix}/${t.id}`), kind: 'error', label: t.label.replace(/^throw /, ''), nodeId: t.id, line: e.line ?? t.line,
-        lane: ctx.lane, parent: ctx.parent,
+        lane: ctx.lane, parent: ctx.parent, diff: diffOf(e, t),
       };
       p.ends.push(end);
       return [{ type: 'end', id: end.id }];
@@ -178,6 +178,7 @@ export function buildProcess(graph, endpointId, { expanded = [], index } = {}) {
       const pub = step({
         id: uniqueId(`${ctx.prefix}/publish ${e.label}`), kind: 'publish', nodeId: ctx.nodeId, edge: edgeRef(e),
         name: 'publishEvent', owner: e.label.replace(/^.*?event /, ''), lane: ctx.lane, parent: ctx.parent, line: e.line, inferred: false,
+        diff: e.diff === 'added' || e.diff === 'removed' ? e.diff : null,
       });
       const listener = callStep(e, t, { ...ctx, lane: 'async', parent: null }, true);
       p.connectors.push({ from: pub.id, to: listener.id, kind: 'async' });
@@ -197,7 +198,7 @@ export function buildProcess(graph, endpointId, { expanded = [], index } = {}) {
     const s = step({
       id, kind: hasSteps ? 'subprocess' : 'call', nodeId: t.id, edge: edgeRef(e), name: call.name, owner: call.owner,
       lane: ctx.lane, parent: ctx.parent, line: e.line, inferred: e.kind === 'dispatch' || e.confidence === 'low',
-      recursive, listener, returns: t.returns,
+      recursive, listener, returns: t.returns, diff: diffOf(e, t),
     });
     if (!hasSteps) return s;
     const wanted = openAll || open.has(id);
@@ -226,7 +227,10 @@ export function buildProcess(graph, endpointId, { expanded = [], index } = {}) {
       sides.get(side).push(e);
     }
     const id = uniqueId(`${ctx.prefix}/${b.id}`);
-    const d = { id, nodeId: b.id, label: shortCondition(b.label), condition: b.label, line: b.line, lane: ctx.lane, parent: ctx.parent, branches: [] };
+    const d = {
+      id, nodeId: b.id, label: shortCondition(b.label), condition: b.label, line: b.line, lane: ctx.lane, parent: ctx.parent, branches: [],
+      diff: b.diff === 'affected' ? null : b.diff || null,
+    };
     p.decisions.push(d);
     for (const [side, list] of sides) {
       d.branches.push({ side, label: SIDE_LABEL[side] || side, items: list.flatMap(e => itemsFor(e, ctx)) });
@@ -277,6 +281,12 @@ export function buildProcess(graph, endpointId, { expanded = [], index } = {}) {
   p.lanes = LANES.filter(([id]) => used.has(id)).map(([id, label]) => ({ id, label }));
   p.summary = summarize(g, ep.id, root.id);
   return p;
+}
+
+/** How a compare changed a step: its call was added or removed, or else what happened to the node it reaches. */
+function diffOf(e, t) {
+  if (e.diff === 'added' || e.diff === 'removed') return e.diff;
+  return t.diff && t.diff !== 'affected' ? t.diff : null;
 }
 
 function guardsData(g, nodeId, seen = new Set()) {
