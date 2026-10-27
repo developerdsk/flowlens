@@ -200,6 +200,7 @@ function setGraph(graph, { keepView = false, sample = false, diff = false } = {}
   $('#compareBtn').disabled = sample || !app.projectPath;
   $('#reindexBtn').disabled = !app.projectPath;
   $('#watchToggle').disabled = !app.projectPath;
+  showProject(sample);
   renderLegend();
   platform.setWindowTitle(sample ? 'FlowLens — sample' : app.projectPath ? `FlowLens — ${basename(app.projectPath)}` : 'FlowLens');
 
@@ -212,12 +213,19 @@ function setGraph(graph, { keepView = false, sample = false, diff = false } = {}
     if (last && flow.byId.has(last)) showEndpoint(last, { quiet: true });
     else if (graph.nodes.length > 700 && eps.length) {
       showEndpoint(eps[0].id, { quiet: true });
-      status(`Large project: showing one entry point. Pick another in the sidebar, or "All entry points".`);
+      status(`Large project: showing one entry point. Pick another in the sidebar, or "All endpoints".`);
     } else showAll({ quiet: true });
   }
   if (prevSelected && flow.byId.has(prevSelected)) selectNode(prevSelected, { fromGraph: true });
   else detail.clear();
   minimap.schedule();
+}
+
+function showProject(sample) {
+  $('#projectName').textContent = sample ? 'sample-app' : app.projectPath ? basename(app.projectPath) : 'Open project';
+  $('#projectPath').hidden = !app.projectPath && !sample;
+  $('#projectPath').textContent = sample ? 'examples/sample-app' : app.projectPath || '';
+  $('#projectPath').title = $('#projectPath').textContent;
 }
 
 function showAll({ quiet } = {}) {
@@ -334,6 +342,7 @@ function exitCompare() {
 // ------------------------------------------------------------------------------------------
 
 function setWatch(on) {
+  $('#watchLabel').textContent = on && app.projectPath ? 'Watching' : 'Watch';
   clearInterval(app.watchTimer);
   app.watchTimer = null;
   app.fingerprint = null;
@@ -405,9 +414,12 @@ async function openSnapshot(file) {
 // ------------------------------------------------------------------------------------------
 
 function wireToolbar() {
-  $('#openBtn').onclick = openProject;
-  $('#indexBtn').onclick = () => indexProject($('#pathInput').value);
-  $('#pathInput').addEventListener('keydown', e => { if (e.key === 'Enter') indexProject(e.target.value); });
+  $('#pathInput').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    $$('.menu.open').forEach(m => m.classList.remove('open'));
+    indexProject(e.target.value);
+  });
+  $('#searchKey').textContent = modKey + 'K';
   $('#reindexBtn').onclick = () => app.projectPath && indexProject(app.projectPath, { keepView: true });
   $('#cancelBtn').onclick = () => app.job.cancel && app.job.cancel();
   $('#watchToggle').onchange = e => setWatch(e.target.checked);
@@ -460,6 +472,7 @@ function runAction(action, data = {}) {
   switch (action) {
     case 'open': return openProject();
     case 'open-recent': return indexProject(data.path);
+    case 'index-path': return indexProject($('#pathInput').value);
     case 'open-snapshot': return openSnapshot();
     case 'reindex': return app.projectPath && indexProject(app.projectPath, { keepView: true });
     case 'compare-ref': return compareWithRef();
@@ -492,7 +505,7 @@ function wireKeyboard() {
     if (isDesktop && mod && ['o', 'r', 'f', 's', 'b', '0'].includes(e.key.toLowerCase())) return;
     if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); openProject(); }
     else if (mod && e.key.toLowerCase() === 'r') { e.preventDefault(); runAction('reindex'); }
-    else if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); runAction('find'); }
+    else if (mod && ['f', 'k'].includes(e.key.toLowerCase())) { e.preventDefault(); runAction('find'); }
     else if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); doExport('snapshot'); }
     else if (e.key === 'Escape') {
       if (flow.view.mode === 'focus') { flow.exitFocus(); minimap.schedule(); }
@@ -634,7 +647,7 @@ function showShortcuts() {
   showModal(`<h3>Keyboard shortcuts</h3><table class="keys">
     <tr><td>${k(modKey + '+O')}</td><td>Open project</td></tr>
     <tr><td>${k(modKey + '+R')}</td><td>Re-index</td></tr>
-    <tr><td>${k(modKey + '+F')}</td><td>Search</td></tr>
+    <tr><td>${k(modKey + '+K')} or ${k(modKey + '+F')}</td><td>Search</td></tr>
     <tr><td>${k(modKey + '+S')}</td><td>Save snapshot</td></tr>
     <tr><td>${k('F')}</td><td>Fit graph to screen</td></tr>
     <tr><td>${k('Esc')}</td><td>Exit focus / clear selection</td></tr>

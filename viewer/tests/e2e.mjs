@@ -39,6 +39,13 @@ page.on('pageerror', e => errors.push(e.message));
 const statusText = () => page.textContent('#status');
 const waitStatus = re => page.waitForFunction(r => new RegExp(r).test(document.querySelector('#status').textContent), re.source, { timeout: 60000 });
 
+// the folder-path field lives in the project menu
+async function indexPath(path) {
+  await page.click('#openMenu [data-menu-toggle]');
+  await page.fill('#pathInput', path);
+  await page.click('#indexBtn');
+}
+
 let failures = 0;
 async function step(name, fn) {
   try { await fn(); console.log('  ok  ', name); }
@@ -62,10 +69,11 @@ try {
   });
 
   await step('index a folder by path', async () => {
-    await page.fill('#pathInput', project);
-    await page.click('#indexBtn');
+    await indexPath(project);
     await waitStatus(/Indexed sample-app/);
     assert.match(await statusText(), /5 entry points/);
+    assert.equal(await page.textContent('#projectName'), 'sample-app');
+    assert.equal(await page.isVisible('#openMenu .menu-pop'), false, 'menu closes after indexing');
   });
 
   await step('select an endpoint shows its flow and lineage', async () => {
@@ -75,6 +83,17 @@ try {
     assert.match(await page.textContent('#panel'), /request\.email\s*→\s*account\.email/);
     const visible = await page.evaluate(() => window.flowlens.flow.visibleNodes().length);
     assert.ok(visible >= 8 && visible < 20, 'visible nodes: ' + visible);
+  });
+
+  await step('search is in the toolbar and opens with Ctrl/Cmd+K', async () => {
+    await page.click('#cy');
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'searchInput');
+    await page.keyboard.type('{id}');
+    await page.waitForFunction(() => document.querySelectorAll('[data-ep]').length === 3);
+    await page.fill('#searchInput', '');
+    await page.dispatchEvent('#searchInput', 'input');
+    await page.keyboard.press('Escape');
   });
 
   await step('tables view lists who touches a table', async () => {
@@ -123,6 +142,7 @@ try {
 
   await step('watch mode re-indexes on save', async () => {
     await page.check('#watchToggle');
+    assert.equal(await page.textContent('#watchLabel'), 'Watching');
     await page.waitForTimeout(2500);
     appendFileSync(join(project, 'src/main/java/com/example/demo/AccountController.java'), '\n// touched\n');
     await waitStatus(/Re-indexed sample-app/);
@@ -146,8 +166,7 @@ try {
     }
     writeFileSync(join(big, 'E.java'), 'package big; @jakarta.persistence.Entity public class E { @jakarta.persistence.Id Long id; }');
     writeFileSync(join(big, 'Repo.java'), 'package big; public interface Repo extends org.springframework.data.jpa.repository.JpaRepository<E, Long> {}');
-    await page.fill('#pathInput', join(work, 'big'));
-    await page.click('#indexBtn');
+    await indexPath(join(work, 'big'));
     await waitStatus(/Indexed big/);
     const nodes = await page.evaluate(() => window.flowlens.flow.graph.nodes.length);
     assert.ok(nodes > 700, 'nodes: ' + nodes);

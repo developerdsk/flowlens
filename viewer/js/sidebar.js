@@ -67,7 +67,7 @@ export class Sidebar {
       (groups.get(owner) || groups.set(owner, []).get(owner)).push(n);
     }
     const parts = [];
-    parts.push(`<div class="item ${this.active === null ? 'active' : ''}" data-all="1"><span class="verb ANY">ALL</span><span class="path">All entry points</span><span class="sub">${eps.length}</span></div>`);
+    parts.push(`<div class="item all ${this.active === null ? 'active' : ''}" data-all="1"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg><span class="label">All endpoints</span><span class="sub">${eps.length}</span></div>`);
     if (!shown.length) parts.push(`<div class="empty">${eps.length ? 'No endpoint matches the search.' : 'No entry points found.<br>Is this a Spring / JAX-RS / Micronaut project?'}</div>`);
     for (const [owner, list] of [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
       list.sort((a, b) => (a.path || '').localeCompare(b.path || '') || (a.verb || '').localeCompare(b.verb || ''));

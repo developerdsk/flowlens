@@ -16,39 +16,53 @@
   <div class="brand" title="FlowLens — endpoint → data flow → database">
     <img src="icon.svg" alt="" class="logo"><span><b>Flow</b>Lens</span>
   </div>
+  <span class="divider" aria-hidden="true"></span>
 
   <div class="group">
     <div class="menu" id="openMenu">
-      <button id="openBtn" class="primary" title="Open a project folder (Ctrl/⌘+O)">Open project</button>
-      <button class="primary caret" data-menu-toggle="openMenu" aria-label="Recent projects">▾</button>
-      <div class="menu-pop" role="menu">
+      <button class="picker" data-menu-toggle="openMenu" id="projectBtn" title="Open a project (Ctrl/⌘+O), recent projects, or a folder path">
+        <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5v8h13v-6.5h-7l-1.5-1.5z"/></svg>
+        <span id="projectName">Open project</span><span class="caret-ico" aria-hidden="true">▾</span>
+      </button>
+      <div class="menu-pop wide" role="menu">
+        <button id="openBtn" data-action="open" role="menuitem">Open folder…</button>
+        <button data-action="open-snapshot" role="menuitem">Open snapshot (.flowlens)…</button>
+        <hr>
         <div class="menu-title">Recent projects</div>
         <div id="recentList"><div class="menu-empty">None yet</div></div>
         <hr>
-        <button data-action="open-snapshot" role="menuitem">Open snapshot (.flowlens)…</button>
-      </div>
-    </div>
-    <input type="text" id="pathInput" placeholder="…or paste a folder path" spellcheck="false" autocomplete="off">
-    <button id="indexBtn" title="Index the path">Index</button>
-    <button id="reindexBtn" class="icon" title="Re-index (Ctrl/⌘+R)" disabled>⟳</button>
-    <label class="toggle" title="Re-index automatically when source files change">
-      <input type="checkbox" id="watchToggle" disabled><span>Watch</span>
-    </label>
-    <div class="menu" id="optionsMenu">
-      <button data-menu-toggle="optionsMenu" title="Indexing options">Options ▾</button>
-      <div class="menu-pop">
+        <div class="menu-title">Index a folder by path</div>
+        <div class="menu-row">
+          <input type="text" id="pathInput" placeholder="/path/to/project" spellcheck="false" autocomplete="off">
+          <button id="indexBtn" class="primary" data-action="index-path">Index</button>
+        </div>
+        <hr>
+        <div class="menu-title">Indexing options</div>
         <label class="menu-check"><input type="checkbox" id="optTests"> Include test sources</label>
         <label class="menu-check desktop-only" hidden title="Maximum memory for the analysis engine (large monorepos need more)">Engine memory
           <select id="optHeap"><option value="">Auto</option><option value="2048">2 GB</option><option value="4096">4 GB</option><option value="8192">8 GB</option><option value="16384">16 GB</option></select>
         </label>
       </div>
     </div>
+    <span id="projectPath" class="project-path" hidden></span>
+    <button id="reindexBtn" class="icon" title="Re-index (Ctrl/⌘+R)" aria-label="Re-index" disabled>⟳</button>
+    <label class="pill" id="watchPill" title="Re-index automatically when source files change">
+      <input type="checkbox" id="watchToggle" disabled><span id="watchLabel">Watch</span>
+    </label>
   </div>
+
+  <div class="spacer"></div>
+
+  <label class="search" title="Search methods, tables and topics (Ctrl/⌘+K)">
+    <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l3.5 3.5"/></svg>
+    <input type="search" id="searchInput" placeholder="Search methods, tables, topics" spellcheck="false" aria-label="Search">
+    <kbd id="searchKey">⌘K</kbd>
+  </label>
 
   <div class="group">
     <div class="menu" id="compareMenu">
       <button data-menu-toggle="compareMenu" id="compareBtn" disabled title="Compare this flow with a git ref or a saved snapshot">Compare ▾</button>
-      <div class="menu-pop">
+      <div class="menu-pop right">
         <button data-action="compare-ref">With a git branch / tag / commit…</button>
         <button data-action="compare-snapshot">With a saved snapshot…</button>
         <hr>
@@ -57,7 +71,7 @@
     </div>
     <div class="menu" id="exportMenu">
       <button data-menu-toggle="exportMenu" id="exportBtn" disabled>Export ▾</button>
-      <div class="menu-pop">
+      <div class="menu-pop right">
         <button data-action="export-png">PNG image (current view)</button>
         <button data-action="export-svg">SVG image (current view)</button>
         <button data-action="export-mermaid">Mermaid diagram (current view)</button>
@@ -65,21 +79,9 @@
         <button data-action="save-snapshot">Save snapshot (.flowlens)…</button>
       </div>
     </div>
-  </div>
-
-  <div class="spacer"></div>
-
-  <div class="group">
-    <div class="menu" id="layersMenu">
-      <button data-menu-toggle="layersMenu" title="Choose which kinds of nodes to show">Layers ▾</button>
-      <div class="menu-pop right layers" id="layerFilters" aria-label="Layers"></div>
-    </div>
-    <button id="dirBtn" class="icon" title="Layout direction">→</button>
-    <button id="tidyBtn" title="Re-arrange the visible flow">Tidy</button>
-    <button id="fitBtn" title="Fit to screen (F)">Fit</button>
-    <button id="themeBtn" class="icon" title="Theme: auto / light / dark">◐</button>
+    <button id="themeBtn" class="icon" title="Theme: auto / light / dark" aria-label="Theme">◐</button>
     <div class="menu" id="helpMenu">
-      <button data-menu-toggle="helpMenu" class="icon" title="Help">?</button>
+      <button data-menu-toggle="helpMenu" class="icon" title="Help" aria-label="Help">?</button>
       <div class="menu-pop right">
         <button data-action="help-mcp">Connect AI agents (MCP)…</button>
         <button data-action="help-shortcuts">Keyboard shortcuts</button>
@@ -92,7 +94,6 @@
 <main>
   <aside id="sidebar" class="sidebar">
     <div class="sidebar-head">
-      <input type="search" id="searchInput" placeholder="Search…" spellcheck="false">
       <select id="moduleSelect" hidden title="Module"></select>
       <div class="tabs" role="tablist">
         <button role="tab" class="tab active" data-tab="endpoints">Endpoints <span class="count" id="countEndpoints"></span></button>
@@ -109,6 +110,15 @@
 
   <section class="canvas">
     <div id="cy"></div>
+    <div class="canvas-tools" role="toolbar" aria-label="Graph">
+      <div class="menu" id="layersMenu">
+        <button data-menu-toggle="layersMenu" title="Choose which kinds of nodes to show">Layers ▾</button>
+        <div class="menu-pop right layers" id="layerFilters" aria-label="Layers"></div>
+      </div>
+      <button id="dirBtn" class="icon" title="Layout direction" aria-label="Layout direction">→</button>
+      <button id="tidyBtn" title="Re-arrange the visible flow">Tidy</button>
+      <button id="fitBtn" title="Fit to screen (F)">Fit</button>
+    </div>
     <div id="banner" class="banner" hidden></div>
     <div id="legend" class="legend"></div>
     <canvas id="minimap" class="minimap" width="200" height="130" title="Minimap — click to move the view"></canvas>
