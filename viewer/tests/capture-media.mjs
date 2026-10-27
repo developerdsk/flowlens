@@ -40,6 +40,7 @@ async function newPage(theme, opts = {}) {
 }
 
 async function index(page, path) {
+  await page.click('#openMenu [data-menu-toggle]');
   await page.fill('#pathInput', path);
   await page.click('#indexBtn');
   await page.waitForFunction(() => /Indexed/.test(document.querySelector('#status').textContent), null, { timeout: 120000 });
@@ -149,6 +150,7 @@ if (process.env.ONLY !== 'screenshots') {
 
   await caption('FlowLens: see how each request flows through your Java code', 2600);
   await caption('1. Point it at a project folder (here: macrozheng/mall, 524 files)', 1200);
+  await page.click('#openMenu [data-menu-toggle]');
   await slowType('#pathInput', large);
   await page.click('#indexBtn');
   await page.waitForFunction(() => /Indexed/.test(document.querySelector('#status').textContent), null, { timeout: 120000 });
@@ -168,6 +170,7 @@ if (process.env.ONLY !== 'screenshots') {
   await caption('Every entry point that touches the table, and the path it takes', 3200);
   await caption('5. Re-index a branch to compare flows; export to PNG, SVG or Mermaid', 2400);
   await page.click('.tab[data-tab="endpoints"]');
+  await page.click('#openMenu [data-menu-toggle]');
   await slowType('#pathInput', sample);
   await page.click('#indexBtn');
   await page.waitForFunction(() => /Indexed/.test(document.querySelector('#status').textContent));
