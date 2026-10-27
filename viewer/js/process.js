@@ -77,6 +77,10 @@ function system(node) {
   return { kind: 'topic', name: node.table || node.label, detail: BROKERS[node.tech] || 'Message channel' };
 }
 
+/** How deep sub-processes open inside each other, and how many steps a process may hold, before the rest stays collapsed. */
+export const MAX_DEPTH = 4;
+export const MAX_STEPS = 400;
+
 /**
  * Build the process for an endpoint. `expanded` holds the ids of sub-process steps to open in
  * place (or `true` for all of them). Returns null when the endpoint is not in the graph.
@@ -162,7 +166,10 @@ export function buildProcess(graph, endpointId, { expanded = [], index } = {}) {
       return [{ type: 'step', id: s.id, inferred }];
     }
     if (t.type === 'throw') {
-      const end = { id: uniqueId(`${ctx.prefix}/${t.id}`), kind: 'error', label: t.label.replace(/^throw /, ''), nodeId: t.id, line: e.line ?? t.line };
+      const end = {
+        id: uniqueId(`${ctx.prefix}/${t.id}`), kind: 'error', label: t.label.replace(/^throw /, ''), nodeId: t.id, line: e.line ?? t.line,
+        lane: ctx.lane, parent: ctx.parent,
+      };
       p.ends.push(end);
       return [{ type: 'end', id: end.id }];
     }
@@ -193,13 +200,14 @@ export function buildProcess(graph, endpointId, { expanded = [], index } = {}) {
       recursive, listener, returns: t.returns,
     });
     if (!hasSteps) return s;
-    const isOpen = openAll || open.has(id);
-    const sub = { id, nodeId: t.id, expanded: isOpen, steps: [] };
+    const wanted = openAll || open.has(id);
+    const isOpen = wanted && ctx.depth < MAX_DEPTH && p.steps.length < MAX_STEPS;
+    const sub = { id, nodeId: t.id, expanded: isOpen, capped: wanted && !isOpen, steps: [] };
     p.subprocesses.push(sub);
     s.expanded = isOpen;
     if (isOpen) {
       const before = p.steps.length;
-      const items = sequence(t.id, { prefix: id, lane: ctx.lane, parent: id, stack: [...ctx.stack, t.id], nodeId: t.id });
+      const items = sequence(t.id, { prefix: id, lane: ctx.lane, parent: id, stack: [...ctx.stack, t.id], nodeId: t.id, depth: ctx.depth + 1 });
       chain(items, []);
       sub.steps = p.steps.slice(before).filter(x => x.parent === id).map(x => x.id);
     } else {
@@ -256,9 +264,9 @@ export function buildProcess(graph, endpointId, { expanded = [], index } = {}) {
 
   const root = delegate || ep;
   const stack = delegate ? [ep.id, delegate.id] : [ep.id];
-  const items = sequence(root.id, { prefix: root.id, lane: 'service', parent: null, stack, nodeId: root.id });
+  const items = sequence(root.id, { prefix: root.id, lane: 'service', parent: null, stack, nodeId: root.id, depth: 0 });
   const tails = chain(items, [{ from: 'start' }]);
-  const ret = { id: 'end', kind: 'return', label: ep.returns && ep.returns !== 'void' ? ep.returns : null, nodeId: ep.id };
+  const ret = { id: 'end', kind: 'return', label: ep.returns && ep.returns !== 'void' ? ep.returns : null, nodeId: ep.id, lane: 'service', parent: null };
   usedIds.add('end');
   p.ends.push(ret);
   link(tails, 'end');
