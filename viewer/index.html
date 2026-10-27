@@ -9,6 +9,7 @@
 <script src="vendor/cytoscape.min.js"></script>
 <script src="vendor/dagre.min.js"></script>
 <script src="vendor/cytoscape-dagre.min.js"></script>
+<script src="vendor/elk.bundled.js"></script>
 <script type="module" src="js/app.js"></script>
 </head>
 <body>
@@ -37,8 +38,9 @@
           <button id="indexBtn" class="primary" data-action="index-path">Index</button>
         </div>
         <hr>
-        <div class="menu-title">Indexing options</div>
+        <div class="menu-title">Options</div>
         <label class="menu-check"><input type="checkbox" id="optTests"> Include test sources</label>
+        <label class="menu-check" title="Show an endpoint as ordered steps in lanes (work in progress)"><input type="checkbox" id="optProcess"> Process view (preview)</label>
         <label class="menu-check desktop-only" hidden title="Maximum memory for the analysis engine (large monorepos need more)">Engine memory
           <select id="optHeap"><option value="">Auto</option><option value="2048">2 GB</option><option value="4096">4 GB</option><option value="8192">8 GB</option><option value="16384">16 GB</option></select>
         </label>
@@ -118,6 +120,20 @@
       <button id="dirBtn" class="icon" title="Layout direction" aria-label="Layout direction">→</button>
       <button id="tidyBtn" title="Re-arrange the visible flow">Tidy</button>
       <button id="fitBtn" title="Fit to screen (F)">Fit</button>
+      <button id="toProcess" hidden title="Show this endpoint as a process">Process view</button>
+    </div>
+    <div id="process" class="process" hidden>
+      <div class="pv-header">
+        <nav class="pv-crumbs" id="pvCrumbs" aria-label="Breadcrumb"></nav>
+        <div class="seg" role="group" aria-label="View">
+          <button class="active" data-pv-view="process" aria-pressed="true">Process</button>
+          <button data-pv-view="graph" aria-pressed="false">Call graph</button>
+        </div>
+        <div class="zoom"><button data-pv-zoom="-1" aria-label="Zoom out">−</button><span id="pvZoom">100%</span><button data-pv-zoom="1" aria-label="Zoom in">+</button></div>
+        <button id="pvFit">Fit</button>
+      </div>
+      <div class="pv-context" id="pvContext"></div>
+      <div class="pv-viewport"><div class="pv-sizer"><div class="pv-stage" role="group" aria-label="Process steps"></div></div></div>
     </div>
     <div id="banner" class="banner" hidden></div>
     <div id="legend" class="legend"></div>

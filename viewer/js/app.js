@@ -6,6 +6,7 @@ import { FlowGraph, LAYERS } from './graph.js';
 import { Sidebar } from './sidebar.js';
 import { DetailPanel } from './detail.js';
 import { Minimap } from './minimap.js';
+import { ProcessView } from './processView.js';
 import { toPng, toSvg, toMermaid, toSnapshot, parseSnapshot } from './export.js';
 import * as platform from './desktop.js';
 
@@ -20,9 +21,10 @@ const app = {
   fingerprint: null,
   selected: null,
   engine: null,
+  processMode: 'process', // or 'graph': which view an endpoint opens in while the preview is on
 };
 
-let flow, sidebar, detail, minimap;
+let flow, sidebar, detail, minimap, processView;
 
 // ------------------------------------------------------------------------------------------
 // boot
@@ -68,7 +70,12 @@ let flow, sidebar, detail, minimap;
     copy: text => navigator.clipboard?.writeText(text).then(() => status('Copied ' + text)),
   });
   minimap = new Minimap($('#minimap'), () => flow.cy);
-  window.flowlens = { app, flow, sidebar };   // handle for end-to-end tests and debugging
+  processView = new ProcessView($('#process'), {
+    onSelect: id => selectNode(id, { fromGraph: true }),
+    onZoom: s => { $('#pvZoom').textContent = Math.round(s * 100) + '%'; },
+  });
+  $('#optProcess').checked = !!state.processPreview;
+  window.flowlens = { app, flow, sidebar, processView };   // handle for end-to-end tests and debugging
 
   buildLayerFilters();
   wireToolbar();
@@ -207,6 +214,7 @@ function setGraph(graph, { keepView = false, sample = false, diff = false } = {}
   if (prevView && (prevView.mode !== 'endpoint' || flow.byId.has(prevView.id))) {
     flow.view = prevView;
     flow.apply();
+    syncProcess();
   } else {
     const last = getState().lastEndpoint[app.projectPath || ''];
     const eps = flow.endpoints();
@@ -221,6 +229,44 @@ function setGraph(graph, { keepView = false, sample = false, diff = false } = {}
   minimap.schedule();
 }
 
+// ------------------------------------------------------------------------------------------
+// process view (preview)
+// ------------------------------------------------------------------------------------------
+
+/** Show the endpoint on screen as a process when the preview is on and the process view is chosen. */
+function syncProcess() {
+  const on = getState().processPreview && flow.view.mode === 'endpoint';
+  $('#toProcess').hidden = !on || app.processMode === 'process';
+  if (!on || app.processMode !== 'process') return hideProcess();
+  const ep = flow.byId.get(flow.view.id);
+  $('#process').hidden = false;
+  $('.canvas').classList.add('pv-on');
+  const owner = (ep.label || '').split('.')[0];
+  $('#pvCrumbs').innerHTML = `<button data-action="show-all">Endpoints</button><span aria-hidden="true">/</span><span>${esc(owner)}</span><span aria-hidden="true">/</span><b>${esc(ep.http || ep.label)}</b>`;
+  processView.show(app.graph, ep.id).then(p => {
+    if (!p) return;
+    const s = p.summary;
+    const chips = (label, list, cls) => list.length ? `<span class="k">${label}</span>${list.map(t => `<span class="${cls}">${esc(t)}</span>`).join('')}` : '';
+    const n = (k, one) => (k ? `${k} ${one}${k === 1 ? '' : one.endsWith('s') ? 'es' : 's'}` : '');
+    $('#pvContext').innerHTML = chips('Reads', s.reads, 'chip-r') + chips('Writes', s.writes, 'chip-w') + chips('Deletes', s.deletes, 'chip-d') +
+      chips('Publishes', s.publishes, 'chip-a') + chips('Calls', s.calls, 'chip-a') +
+      `<span class="counts">${[n(s.decisions, 'decision'), n(s.errorEnds, 'error end'), n(s.subprocesses, 'sub-process')].filter(Boolean).join(' · ')}</span>`;
+    if (app.selected) processView.select(app.selected);
+  }).catch(e => { status('Could not lay out the process: ' + e.message); hideProcess(); });
+}
+
+function hideProcess() {
+  $('#process').hidden = true;
+  $('.canvas').classList.remove('pv-on');
+}
+
+function setProcessMode(mode) {
+  app.processMode = mode;
+  $$('[data-pv-view]').forEach(b => { b.classList.toggle('active', b.dataset.pvView === mode); b.setAttribute('aria-pressed', String(b.dataset.pvView === mode)); });
+  syncProcess();
+  if (mode === 'graph') { flow.cy?.resize(); flow.fit(); minimap.schedule(); }
+}
+
 function showProject(sample) {
   $('#projectName').textContent = sample ? 'sample-app' : app.projectPath ? basename(app.projectPath) : 'Open project';
   $('#projectPath').hidden = !app.projectPath && !sample;
@@ -230,6 +276,7 @@ function showProject(sample) {
 
 function showAll({ quiet } = {}) {
   sidebar.setActive(null);
+  hideProcess();
   const n = flow.showAll();
   if (!quiet) status(`Showing all entry points (${n} nodes).`);
   if (n > 1500) status(`Showing ${n} nodes — pick an entry point in the sidebar for a clearer view.`);
@@ -239,6 +286,7 @@ function showAll({ quiet } = {}) {
 function showEndpoint(id, { quiet } = {}) {
   sidebar.setActive('ep', id);
   flow.showEndpoint(id);
+  syncProcess();
   const ep = flow.byId.get(id);
   if (ep) {
     if (!quiet) status(`${ep.http || ep.label}`);
@@ -250,6 +298,7 @@ function showEndpoint(id, { quiet } = {}) {
 }
 
 function showTable(table) {
+  hideProcess();
   sidebar.setTab('tables');
   sidebar.setActive('table', table);
   const n = flow.showTable(table);
@@ -259,6 +308,7 @@ function showTable(table) {
 }
 
 function toggleFocus(id) {
+  hideProcess();
   if (flow.view.mode === 'focus') flow.exitFocus(); else flow.focus(id);
   selectNode(id, { fromGraph: true });
   minimap.schedule();
@@ -268,12 +318,13 @@ function selectNode(id, { fromGraph = false } = {}) {
   const n = flow.byId?.get(id);
   if (!n) return;
   app.selected = id;
-  if (!fromGraph) {
+  if (!fromGraph && $('#process').hidden) {
     // make sure it is visible: switch to a view that contains it
     const node = flow.cy.getElementById(id);
     if (!node.nonempty() || node.style('display') === 'none') flow.focus(id);
   }
   flow.select(id);
+  processView.select(id);
   const outgoing = (flow.out.get(id) || []).map(e => [e, flow.byId.get(e.target)]).filter(x => x[1]);
   const incoming = (flow.in.get(id) || []).map(e => [e, flow.byId.get(e.source)]).filter(x => x[1]);
   detail.show(n, {
@@ -420,6 +471,11 @@ function wireToolbar() {
     indexProject(e.target.value);
   });
   $('#searchKey').textContent = modKey + 'K';
+  $('#optProcess').onchange = e => { saveState({ processPreview: e.target.checked }); setProcessMode('process'); };
+  $$('[data-pv-view]').forEach(b => { b.onclick = () => setProcessMode(b.dataset.pvView); });
+  $('#toProcess').onclick = () => setProcessMode('process');
+  $$('[data-pv-zoom]').forEach(b => { b.onclick = () => processView.zoom(Number(b.dataset.pvZoom)); });
+  $('#pvFit').onclick = () => processView.fit();
   $('#reindexBtn').onclick = () => app.projectPath && indexProject(app.projectPath, { keepView: true });
   $('#cancelBtn').onclick = () => app.job.cancel && app.job.cancel();
   $('#watchToggle').onchange = e => setWatch(e.target.checked);

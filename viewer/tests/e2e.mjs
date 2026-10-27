@@ -85,6 +85,42 @@ try {
     assert.ok(visible >= 8 && visible < 20, 'visible nodes: ' + visible);
   });
 
+  await step('process view (preview): steps in order, lanes, error end', async () => {
+    await page.click('#openMenu [data-menu-toggle]');
+    await page.check('#optProcess');
+    await page.click('#openMenu [data-menu-toggle]');
+    await page.click('[data-ep]:has-text("/api/accounts") >> nth=0');
+    await page.waitForSelector('#process:not([hidden]) .pv-step');
+    const steps = await page.$$eval('#process .pv-step', els => els
+      .sort((a, b) => a.dataset.order - b.dataset.order).map(e => e.querySelector('b').textContent));
+    assert.deepEqual(steps, ['existsByEmail()', 'save()', 'record()', 'onAccountCreated()']);
+    assert.deepEqual(await page.$$eval('.pv-lane-label', els => els.map(e => e.textContent)),
+      ['Service', 'Database', 'Async listeners', 'External systems']);
+    assert.match(await page.getAttribute('.pv-event.end.error', 'aria-label'), /IllegalStateException/);
+    assert.match(await page.textContent('#pvContext'), /1 decision · 1 error end · 2 sub-processes/);
+  });
+
+  await step('process view: select, keyboard, switch to call graph, turn off', async () => {
+    await page.click('.pv-step:has-text("save()")');
+    assert.equal(await page.textContent('#panel h2'), 'UPSERT account');
+    assert.equal(await page.$$eval('.pv-node.selected', els => els.length), 2, 'the step and its table card');
+    await page.focus('.pv-node[data-order="0"]');
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.order), '1');
+    await page.click('[data-pv-view="graph"]');
+    assert.equal(await page.isHidden('#process'), true);
+    await page.click('#toProcess');
+    await page.waitForSelector('#process:not([hidden]) .pv-step');
+    await page.click('#openMenu [data-menu-toggle]');
+    await page.uncheck('#optProcess');
+    await page.click('#openMenu [data-menu-toggle]');
+    assert.equal(await page.isHidden('#process'), true);
+    await page.click('[data-ep]:has-text("/api/accounts") >> nth=0');
+    assert.equal(await page.textContent('#panel h2'), 'POST /api/accounts');
+    const visible = await page.evaluate(() => window.flowlens.flow.visibleNodes().length);
+    assert.ok(visible >= 8 && visible < 20, 'visible nodes: ' + visible);
+  });
+
   await step('search is in the toolbar and opens with Ctrl/Cmd+K', async () => {
     await page.click('#cy');
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k');
@@ -173,6 +209,18 @@ try {
     await page.click('.tab[data-tab="endpoints"]');
     await page.click('[data-all]');
     await page.waitForTimeout(500);
+  });
+
+  await step('large project: process view preview of a looping flow', async () => {
+    await page.click('#openMenu [data-menu-toggle]');
+    await page.check('#optProcess');
+    await page.click('#openMenu [data-menu-toggle]');
+    await page.click('[data-ep]:has-text("/c7")');
+    await page.waitForSelector('#process:not([hidden]) .pv-step');
+    assert.ok(await page.$$eval('.pv-card', els => els.length) >= 3, 'tables of the collapsed sub-process stay visible');
+    await page.click('#openMenu [data-menu-toggle]');
+    await page.uncheck('#optProcess');
+    await page.click('#openMenu [data-menu-toggle]');
   });
 
   await step('no console errors', async () => assert.deepEqual(errors, []));
