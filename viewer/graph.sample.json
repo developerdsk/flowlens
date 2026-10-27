@@ -13,6 +13,7 @@
    "verb": "POST",
    "path": "/api/accounts",
    "framework": "spring",
+   "returns": "Account",
    "file": "src/main/java/com/example/demo/AccountController.java",
    "line": 23,
    "confidence": "high",
@@ -36,6 +37,7 @@
    "label": "AccountServiceImpl.create()",
    "type": "method",
    "layer": "service",
+   "returns": "Account",
    "file": "src/main/java/com/example/demo/AccountServiceImpl.java",
    "line": 20,
    "confidence": "high",
@@ -77,6 +79,7 @@
    "label": "AuditService.record()",
    "type": "method",
    "layer": "service",
+   "returns": "void",
    "file": "src/main/java/com/example/demo/AuditService.java",
    "line": 15,
    "confidence": "high",
@@ -88,6 +91,7 @@
    "label": "WelcomeMailer.onAccountCreated()",
    "type": "method",
    "layer": "service",
+   "returns": "void",
    "file": "src/main/java/com/example/demo/WelcomeMailer.java",
    "line": 22,
    "confidence": "high",
@@ -95,7 +99,7 @@
    "hash": "8f649a134ea0"
   },
   {
-   "id": "T:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)@23:13",
+   "id": "T:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)#ThrowStmt0",
    "label": "throw IllegalStateException",
    "type": "throw",
    "layer": "flow",
@@ -104,7 +108,7 @@
    "source": "throw new IllegalStateException(\"email already registered\");"
   },
   {
-   "id": "BR:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)@22:9",
+   "id": "BR:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)#IfStmt0",
    "label": "if (accountRepository.existsByEmail(request.getEmail()))",
    "type": "branch",
    "layer": "flow",
@@ -153,6 +157,7 @@
    "verb": "GET",
    "path": "/api/accounts/{id}",
    "framework": "spring",
+   "returns": "Account",
    "file": "src/main/java/com/example/demo/AccountController.java",
    "line": 28,
    "confidence": "high",
@@ -164,6 +169,7 @@
    "label": "AccountServiceImpl.find()",
    "type": "method",
    "layer": "service",
+   "returns": "Account",
    "file": "src/main/java/com/example/demo/AccountServiceImpl.java",
    "line": 42,
    "confidence": "high",
@@ -180,6 +186,7 @@
    "verb": "PATCH",
    "path": "/api/accounts/{id}/status",
    "framework": "spring",
+   "returns": "void",
    "file": "src/main/java/com/example/demo/AccountController.java",
    "line": 33,
    "confidence": "high",
@@ -191,6 +198,7 @@
    "label": "AccountServiceImpl.changeStatus()",
    "type": "method",
    "layer": "service",
+   "returns": "void",
    "file": "src/main/java/com/example/demo/AccountServiceImpl.java",
    "line": 48,
    "confidence": "high",
@@ -218,6 +226,7 @@
    "verb": "DELETE",
    "path": "/api/accounts/{id}",
    "framework": "spring",
+   "returns": "void",
    "file": "src/main/java/com/example/demo/AccountController.java",
    "line": 38,
    "confidence": "high",
@@ -229,6 +238,7 @@
    "label": "AccountServiceImpl.close()",
    "type": "method",
    "layer": "service",
+   "returns": "void",
    "file": "src/main/java/com/example/demo/AccountServiceImpl.java",
    "line": 54,
    "confidence": "high",
@@ -251,6 +261,7 @@
    "verb": "SCHEDULED",
    "path": "cron=0 0 3 * * *",
    "framework": "spring",
+   "returns": "void",
    "file": "src/main/java/com/example/demo/DormantAccountCleanup.java",
    "line": 16,
    "confidence": "high",
@@ -274,139 +285,179 @@
    "target": "M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)",
    "label": "create",
    "confidence": "high",
-   "kind": "call"
+   "kind": "call",
+   "line": 25,
+   "seq": 1
   },
   {
    "source": "M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)",
    "target": "DB:SELECT:account",
    "label": "AccountRepository.existsByEmail()",
    "confidence": "high",
-   "kind": "sink"
+   "kind": "sink",
+   "line": 22,
+   "seq": 1
   },
   {
    "source": "M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)",
    "target": "DB:UPSERT:account",
    "label": "AccountRepository.save()",
    "confidence": "high",
-   "kind": "sink"
+   "kind": "sink",
+   "line": 36,
+   "seq": 3
   },
   {
    "source": "M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)",
    "target": "M:com.example.demo.AuditService#record(String,Long)",
    "label": "record",
    "confidence": "high",
-   "kind": "call"
+   "kind": "call",
+   "line": 37,
+   "seq": 4
   },
   {
    "source": "M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)",
    "target": "M:com.example.demo.WelcomeMailer#onAccountCreated(AccountCreatedEvent)",
    "label": "event AccountCreatedEvent",
    "confidence": "medium",
-   "kind": "event"
+   "kind": "event",
+   "line": 38,
+   "seq": 5
   },
   {
    "source": "M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)",
-   "target": "BR:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)@22:9",
+   "target": "BR:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)#IfStmt0",
    "confidence": "high",
-   "kind": "branch"
+   "kind": "branch",
+   "line": 22,
+   "seq": 2
   },
   {
-   "source": "BR:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)@22:9",
-   "target": "T:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)@23:13",
+   "source": "BR:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)#IfStmt0",
+   "target": "T:M:com.example.demo.AccountServiceImpl#create(CreateAccountRequest)#ThrowStmt0",
    "label": "then \u00b7 throws",
    "confidence": "high",
-   "kind": "flow"
+   "kind": "flow",
+   "line": 23,
+   "seq": 1
   },
   {
    "source": "M:com.example.demo.WelcomeMailer#onAccountCreated(AccountCreatedEvent)",
    "target": "EXT:kafka:SEND:account-events",
    "label": "kafka.send()",
    "confidence": "high",
-   "kind": "sink"
+   "kind": "sink",
+   "line": 24,
+   "seq": 1
   },
   {
    "source": "M:com.example.demo.WelcomeMailer#onAccountCreated(AccountCreatedEvent)",
    "target": "EXT:http:POST:http://mail-service/api/welcome",
    "label": "rest.postForObject()",
    "confidence": "high",
-   "kind": "sink"
+   "kind": "sink",
+   "line": 25,
+   "seq": 2
   },
   {
    "source": "M:com.example.demo.AuditService#record(String,Long)",
    "target": "DB:INSERT:audit_log",
    "label": "jdbc.update()",
    "confidence": "high",
-   "kind": "sink"
+   "kind": "sink",
+   "line": 16,
+   "seq": 1
   },
   {
    "source": "EP:com.example.demo.AccountController#getAccount(Long)@GET /api/accounts/{id}",
    "target": "M:com.example.demo.AccountServiceImpl#find(Long)",
    "label": "find",
    "confidence": "high",
-   "kind": "call"
+   "kind": "call",
+   "line": 30,
+   "seq": 1
   },
   {
    "source": "M:com.example.demo.AccountServiceImpl#find(Long)",
    "target": "DB:SELECT:account",
    "label": "AccountRepository.findById()",
    "confidence": "high",
-   "kind": "sink"
+   "kind": "sink",
+   "line": 44,
+   "seq": 1
   },
   {
    "source": "EP:com.example.demo.AccountController#changeStatus(Long,String)@PATCH /api/accounts/{id}/status",
    "target": "M:com.example.demo.AccountServiceImpl#changeStatus(Long,String)",
    "label": "changeStatus",
    "confidence": "high",
-   "kind": "call"
+   "kind": "call",
+   "line": 35,
+   "seq": 1
   },
   {
    "source": "M:com.example.demo.AccountServiceImpl#changeStatus(Long,String)",
    "target": "DB:UPDATE:account",
    "label": "AccountRepository.updateStatus()",
    "confidence": "high",
-   "kind": "sink"
+   "kind": "sink",
+   "line": 50,
+   "seq": 1
   },
   {
    "source": "M:com.example.demo.AccountServiceImpl#changeStatus(Long,String)",
    "target": "M:com.example.demo.AuditService#record(String,Long)",
    "label": "record",
    "confidence": "high",
-   "kind": "call"
+   "kind": "call",
+   "line": 51,
+   "seq": 2
   },
   {
    "source": "EP:com.example.demo.AccountController#closeAccount(Long)@DELETE /api/accounts/{id}",
    "target": "M:com.example.demo.AccountServiceImpl#close(Long)",
    "label": "close",
    "confidence": "high",
-   "kind": "call"
+   "kind": "call",
+   "line": 40,
+   "seq": 1
   },
   {
    "source": "M:com.example.demo.AccountServiceImpl#close(Long)",
    "target": "M:com.example.demo.AccountServiceImpl#find(Long)",
    "label": "find",
    "confidence": "high",
-   "kind": "call"
+   "kind": "call",
+   "line": 56,
+   "seq": 1
   },
   {
    "source": "M:com.example.demo.AccountServiceImpl#close(Long)",
    "target": "DB:UPSERT:account",
    "label": "AccountRepository.save()",
    "confidence": "high",
-   "kind": "sink"
+   "kind": "sink",
+   "line": 61,
+   "seq": 2
   },
   {
    "source": "M:com.example.demo.AccountServiceImpl#close(Long)",
    "target": "M:com.example.demo.AuditService#record(String,Long)",
    "label": "record",
    "confidence": "high",
-   "kind": "call"
+   "kind": "call",
+   "line": 62,
+   "seq": 3
   },
   {
    "source": "EP:com.example.demo.DormantAccountCleanup#purgeClosedAccounts()@SCHEDULED cron=0 0 3 * * *",
    "target": "DB:DELETE:account",
    "label": "AccountRepository.deleteByStatus()",
    "confidence": "high",
-   "kind": "sink"
+   "kind": "sink",
+   "line": 18,
+   "seq": 1
   }
  ],
  "stats": {

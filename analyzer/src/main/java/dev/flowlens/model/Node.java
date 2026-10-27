@@ -50,6 +50,9 @@ public class Node {
     /** then | else | case X | loop | catch */
     public String branch;
 
+    /** Simple return type of an endpoint or method, e.g. "Account", "List<Order>", "void". */
+    public String returns;
+
     // source location
     public String file;
     public Integer line;
