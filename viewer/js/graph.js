@@ -67,7 +67,7 @@ function wrapLines(text, font) {
 function sizeOf(display, type) {
   const fontSize = type === 'endpoint' ? 12 : type === 'branch' || type === 'throw' ? 10 : 11;
   const mono = type === 'db' || type === 'external';
-  const font = `600 ${fontSize}px ${mono ? 'ui-monospace, Menlo, Consolas, monospace' : '-apple-system, Segoe UI, Roboto, sans-serif'}`;
+  const font = `600 ${fontSize}px ${cssVar(mono ? '--font-mono' : '--font-sans')}`;
   const lines = wrapLines(display, font);
   measureCtx.font = font;
   const textW = Math.min(MAX_TEXT, Math.max(...lines.map(l => measureCtx.measureText(l).width), 10));
@@ -198,19 +198,19 @@ export class FlowGraph {
       { selector: 'node', style: {
         'background-color': ele => nodeColor(ele.data('raw')),
         'shape': 'round-rectangle', 'label': 'data(display)', 'color': '#fff',
-        'font-size': 11, 'font-weight': 600, 'text-valign': 'center', 'text-halign': 'center',
+        'font-size': 11, 'font-weight': 600, 'font-family': v('--font-sans'), 'text-valign': 'center', 'text-halign': 'center',
         'text-wrap': 'wrap', 'text-max-width': MAX_TEXT + 2, 'width': 'data(w)', 'height': 'data(h)',
         'border-width': 1.5, 'border-color': 'rgba(255,255,255,0.18)',
       } },
       { selector: 'node[type="endpoint"]', style: { 'border-width': 3, 'border-color': v('--text'), 'font-size': 12 } },
       { selector: 'node[type="branch"]', style: { 'shape': 'diamond', 'font-size': 10 } },
       { selector: 'node[type="throw"]', style: { 'shape': 'tag', 'font-size': 10 } },
-      { selector: 'node[type="db"]', style: { 'shape': 'barrel', 'font-family': 'ui-monospace, Menlo, Consolas, monospace' } },
-      { selector: 'node[type="external"]', style: { 'shape': 'hexagon', 'font-family': 'ui-monospace, Menlo, Consolas, monospace' } },
-      { selector: 'node[confidence="low"]', style: { 'border-style': 'dashed', 'border-width': 2.5, 'border-color': v('--db-update') } },
+      { selector: 'node[type="db"]', style: { 'shape': 'barrel', 'font-family': v('--font-mono') } },
+      { selector: 'node[type="external"]', style: { 'shape': 'hexagon', 'font-family': v('--font-mono') } },
+      { selector: 'node[confidence="low"]', style: { 'border-style': 'dashed', 'border-width': 2.5, 'border-color': v('--c-inferred') } },
       { selector: 'edge', style: {
         'width': 1.6, 'line-color': v('--edge'), 'target-arrow-color': v('--edge-arrow'), 'target-arrow-shape': 'triangle',
-        'curve-style': 'bezier', 'label': 'data(label)', 'font-size': 9, 'color': v('--edge-label'),
+        'curve-style': 'bezier', 'label': 'data(label)', 'font-size': 9, 'font-family': v('--font-sans'), 'color': v('--edge-label'),
         'text-background-color': v('--bg'), 'text-background-opacity': 0.9, 'text-background-padding': 2,
         'arrow-scale': 0.9,
       } },
@@ -227,7 +227,7 @@ export class FlowGraph {
       { selector: 'edge[diff="removed"]', style: { 'line-color': v('--diff-removed'), 'target-arrow-color': v('--diff-removed'), 'line-style': 'dashed', 'opacity': 0.6 } },
       { selector: 'node.collapsed', style: { 'border-style': 'double', 'border-width': 6, 'border-color': v('--muted') } },
       { selector: 'node.dim', style: { 'opacity': 0.25 } },
-      { selector: 'node.hit', style: { 'border-width': 4, 'border-color': v('--accent') } },
+      { selector: 'node.hit', style: { 'border-width': 5, 'border-style': 'double', 'border-color': v('--text') } },
       { selector: 'node:selected', style: { 'border-width': 4, 'border-color': v('--selected'), 'border-style': 'solid' } },
       { selector: 'edge:selected', style: { 'width': 3, 'line-color': v('--selected'), 'target-arrow-color': v('--selected') } },
     ];

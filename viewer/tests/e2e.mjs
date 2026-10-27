@@ -53,6 +53,14 @@ try {
     assert.equal(await page.textContent('#countEndpoints'), '5');
   });
 
+  await step('bundled fonts load (no network fonts)', async () => {
+    const loaded = await page.evaluate(async () => {
+      await document.fonts.ready;
+      return [...document.fonts].filter(f => f.status === 'loaded').map(f => `${f.family.replace(/"/g, '')} ${f.weight}`).sort();
+    });
+    assert.ok(loaded.includes('IBM Plex Sans 600') && loaded.includes('IBM Plex Mono 600'), loaded.join(', '));
+  });
+
   await step('index a folder by path', async () => {
     await page.fill('#pathInput', project);
     await page.click('#indexBtn');

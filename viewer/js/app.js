@@ -32,6 +32,8 @@ let flow, sidebar, detail, minimap;
   cytoscape.use(cytoscapeDagre);
   const state = await loadState();
   applyTheme(state.theme);
+  // node sizes are measured on a canvas, so the bundled fonts must be ready first
+  await Promise.all(['"IBM Plex Sans"', '"IBM Plex Mono"'].map(f => document.fonts.load(`600 11px ${f}`))).catch(() => {});
 
   flow = new FlowGraph($('#cy'), {
     onSelect: n => selectNode(n.id, { fromGraph: true }),
