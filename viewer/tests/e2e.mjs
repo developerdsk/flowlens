@@ -119,6 +119,26 @@ try {
     assert.equal(await page.textContent('#panel .eyebrow'), 'Error end');
   });
 
+  await step('process view: open a sub-process in place, collapse it, expand and collapse all', async () => {
+    const names = () => page.$$eval('#process .pv-step b', els => els.map(e => e.textContent));
+    await page.click('[aria-label="Expand onAccountCreated()"]');
+    await page.waitForSelector('.pv-container');
+    assert.deepEqual(await names(), ['existsByEmail()', 'save()', 'record()', 'send()', 'postForObject()']);
+    assert.match(await page.textContent('#pvCrumbs'), /POST \/api\/accounts\s*\/\s*onAccountCreated\(\)/);
+    assert.equal(await page.textContent('#pvExpand'), 'Collapse all');
+    await page.click('[aria-label="Collapse onAccountCreated()"]');
+    await page.waitForSelector('[aria-label="Expand onAccountCreated()"]');
+    assert.deepEqual(await names(), ['existsByEmail()', 'save()', 'record()', 'onAccountCreated()']);
+    assert.equal(await page.$$eval('.pv-card', els => els.length), 5, 'collapsing hides steps, never the tables and systems they touch');
+    await page.click('#pvExpand');
+    await page.waitForSelector('.pv-container');
+    assert.equal(await page.$$eval('.pv-container', els => els.length), 2);
+    assert.ok((await names()).includes('update()'));
+    await page.click('#pvExpand');
+    await page.waitForSelector('.pv-container', { state: 'detached' });
+    assert.equal(await page.textContent('#pvExpand'), 'Expand all');
+  });
+
   await step('process view: select, keyboard, switch to call graph, turn off', async () => {
     await page.click('.pv-step:has-text("save()")');
     assert.equal(await page.textContent('#panel h2'), 'save()');
@@ -237,12 +257,25 @@ try {
     await page.click('[data-ep]:has-text("/c7")');
     await page.waitForSelector('#process:not([hidden]) .pv-step');
     assert.ok(await page.$$eval('.pv-card', els => els.length) >= 3, 'tables of the collapsed sub-process stay visible');
+    await page.click('#pvExpand');
+    await page.waitForSelector('.pv-container');
+    const depth = await page.evaluate(() => Math.max(...[...document.querySelectorAll('.pv-container')].map(el => {
+      let d = 0;
+      for (let c = el; c; c = [...document.querySelectorAll('.pv-container')].find(o => o !== c && contains(o, c))) d++;
+      return d;
+      function contains(o, c) {
+        const a = o.getBoundingClientRect(), b = c.getBoundingClientRect();
+        return a.left <= b.left && a.top <= b.top && a.right >= b.right && a.bottom >= b.bottom;
+      }
+    })));
+    assert.ok(depth >= 1 && depth <= 4, 'nesting depth ' + depth);
+    await page.click('#pvExpand');
     await page.click('#openMenu [data-menu-toggle]');
     await page.uncheck('#optProcess');
     await page.click('#openMenu [data-menu-toggle]');
   });
 
-  await step('no console errors', async () => assert.deepEqual(errors, []));
+  await step('no console errors', async () => assert.deepEqual(errors, [], errors.join(' | ')));
 } finally {
   await browser.close();
   engine.kill();

@@ -386,7 +386,7 @@ ul.list li.nav small { display: block; color: var(--muted); font-size: 11px; }
 .pv-lane { position: absolute; left: 0; right: 0; border-bottom: 1px solid var(--line); }
 .pv-lane:nth-child(even) { background: var(--panel2); }
 .pv-lane-label { position: absolute; left: 14px; top: 12px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.pv-wires { position: absolute; left: 0; top: 0; fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.pv-wires { position: absolute; left: 0; top: 0; pointer-events: none; fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .pv-wires marker path { stroke: none; }
 .pv-wires .k-sequence, .pv-wires .k-branch { stroke: var(--c-sequence); } .k-sequence path, .k-branch path { fill: var(--c-sequence); }
 .pv-wires .k-error { stroke: var(--k-error); } .k-error path { fill: var(--k-error); }
@@ -409,8 +409,18 @@ ul.list li.nav small { display: block; color: var(--muted); font-size: 11px; }
 .pv-text { display: flex; flex-direction: column; min-width: 0; line-height: 17px; }
 .pv-text b { font: 600 12px var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pv-text small { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pv-step.sub { padding-right: 32px; position: relative; }
-.pv-plus { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; border: 1px solid var(--line-strong); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--text2); background: var(--panel2); }
+.pv-step.sub { padding-right: 36px; }
+.pv-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; padding: 0; border: 1px solid var(--line-strong); border-radius: 5px; display: flex; align-items: center; justify-content: center; font: 600 14px/1 var(--font-mono); color: var(--text2); background: var(--panel2); }
+.pv-toggle:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.pv-toggle:disabled { opacity: .45; cursor: not-allowed; }
+.pv-container { border: 1.5px solid var(--k-sub-line); border-radius: 12px; background: var(--k-sub-bg); }
+.pv-ctitle { position: absolute; left: 12px; right: 8px; top: 8px; height: 32px; display: flex; align-items: center; }
+.pv-ctitle .pv-toggle { position: static; transform: none; margin-left: auto; border-color: var(--k-sub-line); background: var(--panel); }
+.pv-node.pv-cname { width: auto; height: 28px; display: flex; align-items: baseline; gap: 8px; padding: 0 6px; border: none; border-radius: 6px; background: none; }
+.pv-node.pv-cname:hover:not(:disabled) { background: color-mix(in srgb, var(--k-sub-bg) 70%, transparent); }
+.pv-cname b { font: 600 12px var(--font-mono); color: var(--k-sub); }
+.pv-cname small { font-size: 11px; color: var(--muted); }
+.pv-node.pv-cname.selected { box-shadow: 0 0 0 2px var(--accent); }
 .pv-step.inferred { border-style: dashed; border-color: var(--c-inferred); background: var(--s-low-bg); }
 .pv-step.recursive { border-style: dashed; }
 .op { margin-left: auto; font: 600 10px var(--font-mono); padding: 2px 6px; border-radius: 4px; background: var(--op-select-bg); color: var(--op-select); }

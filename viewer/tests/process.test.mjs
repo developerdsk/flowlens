@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildProcess, shortCondition, splitCall } from '../js/process.js';
+import { buildProcess, shortCondition, splitCall, MAX_DEPTH, MAX_STEPS } from '../js/process.js';
 
 const sample = JSON.parse(readFileSync(new URL('../graph.sample.json', import.meta.url), 'utf8'));
 const endpoint = (g, http) => g.nodes.find(n => n.http === http).id;
@@ -186,7 +186,8 @@ test('a branch that guards only plain calls is not a decision', () => {
   assert.deepEqual(p.steps.map(s => s.name), ['log()']);
 });
 
-test('shared sub-flows do not blow up the summary', () => {
+/** 40 levels where each method calls the next level's two methods: 2^40 paths, 80 methods. */
+function diamond() {
   const nodes = [{ id: 'EP', label: 'C.x()', type: 'endpoint' }, { id: 'T', label: 'SELECT t', type: 'db', op: 'SELECT', table: 't' }];
   const edges = [];
   for (let i = 0; i < 40; i++) {
@@ -196,11 +197,70 @@ test('shared sub-flows do not blow up the summary', () => {
     }
   }
   edges.push({ source: 'L39', target: 'T', label: 'R.find()', kind: 'sink', seq: 1 });
+  return { nodes, edges };
+}
+
+const depthOf = (p, s) => (s.parent ? 1 + depthOf(p, p.steps.find(x => x.id === s.parent)) : 0);
+
+test('shared sub-flows do not blow up the summary', () => {
   const t0 = performance.now();
-  const p = buildProcess({ nodes, edges }, 'EP');
+  const p = buildProcess(diamond(), 'EP');
   assert.ok(performance.now() - t0 < 1000, 'built in ' + (performance.now() - t0) + 'ms');
   assert.equal(p.summary.subprocesses, 79);
   assert.deepEqual(p.summary.reads, ['t']);
+});
+
+test('opening everything stops at the depth cap', () => {
+  const t0 = performance.now();
+  const p = buildProcess(diamond(), 'EP', { expanded: true });
+  assert.ok(performance.now() - t0 < 1000, 'built in ' + (performance.now() - t0) + 'ms');
+  assert.equal(Math.max(...p.steps.map(s => depthOf(p, s))), MAX_DEPTH);
+  const capped = p.subprocesses.filter(s => s.capped);
+  assert.ok(capped.length > 0);
+  assert.ok(capped.every(s => !s.expanded && depthOf(p, p.steps.find(x => x.id === s.id)) === MAX_DEPTH));
+  assert.deepEqual(p.tables.map(t => t.table).filter((t, i, a) => a.indexOf(t) === i), ['t'], 'a capped sub-process keeps its tables');
+});
+
+test('opening everything stops at the step budget', () => {
+  const nodes = [{ id: 'EP', label: 'C.x()', type: 'endpoint' }];
+  const edges = [];
+  const fan = (from, level, prefix) => {
+    if (level === 3) return;
+    for (let i = 0; i < 30; i++) {
+      const id = `${prefix}${i}`;
+      nodes.push({ id, label: `S${level}.m${id}()`, type: 'method' });
+      edges.push({ source: from, target: id, label: 'm', kind: 'call', seq: i + 1 });
+      fan(id, level + 1, id + '.');
+    }
+  };
+  fan('EP', 0, 'n');
+  const p = buildProcess({ nodes, edges }, 'EP', { expanded: true });
+  assert.ok(p.steps.length <= MAX_STEPS + 30 * (MAX_DEPTH + 1), 'past the budget only the siblings already being drawn are added; steps: ' + p.steps.length);
+  assert.ok(p.subprocesses.some(s => s.capped));
+});
+
+test('ends inside an opened sub-process carry their parent', () => {
+  const g = {
+    nodes: [
+      { id: 'EP', label: 'C.x()', type: 'endpoint' },
+      { id: 'A', label: 'S.a()', type: 'method' },
+      { id: 'BR', label: 'if (bad)', type: 'branch' },
+      { id: 'X', label: 'throw IllegalStateException', type: 'throw' },
+      { id: 'M', label: 'S.b()', type: 'method' },
+    ],
+    edges: [
+      { source: 'EP', target: 'A', label: 'a', kind: 'call', seq: 1 },
+      { source: 'EP', target: 'M', label: 'b', kind: 'call', seq: 2 },
+      { source: 'A', target: 'BR', label: '', kind: 'branch', seq: 1 },
+      { source: 'BR', target: 'X', label: 'then · throws', kind: 'throw', seq: 1 },
+    ],
+  };
+  const sub = buildProcess(g, 'EP').steps.find(s => s.name === 'a()');
+  const p = buildProcess(g, 'EP', { expanded: [sub.id] });
+  const error = p.ends.find(e => e.kind === 'error');
+  assert.equal(error.parent, sub.id);
+  assert.equal(p.decisions[0].parent, sub.id);
+  assert.equal(p.ends.find(e => e.kind === 'return').parent, null);
 });
 
 test('labels', () => {

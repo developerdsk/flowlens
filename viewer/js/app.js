@@ -73,6 +73,7 @@ let flow, sidebar, detail, minimap, processView;
   processView = new ProcessView($('#process'), {
     onSelect: (id, via) => selectNode(id, { fromGraph: true, via }),
     onZoom: s => { $('#pvZoom').textContent = Math.round(s * 100) + '%'; },
+    onModel: showProcessChrome,
   });
   $('#optProcess').checked = !!state.processPreview;
   window.flowlens = { app, flow, sidebar, processView };   // handle for end-to-end tests and debugging
@@ -241,18 +242,28 @@ function syncProcess() {
   const ep = flow.byId.get(flow.view.id);
   $('#process').hidden = false;
   $('.canvas').classList.add('pv-on');
+  processView.show(app.graph, ep.id).catch(e => { status('Could not lay out the process: ' + e.message); hideProcess(); });
+}
+
+/** Header, breadcrumb (with the open sub-process path) and context strip for the drawn process. */
+function showProcessChrome(p, path) {
+  const ep = flow.byId.get(p.start.nodeId);
   const owner = (ep.label || '').split('.')[0];
-  $('#pvCrumbs').innerHTML = `<button data-action="show-all">Endpoints</button><span aria-hidden="true">/</span><span>${esc(owner)}</span><span aria-hidden="true">/</span><b>${esc(ep.http || ep.label)}</b>`;
-  processView.show(app.graph, ep.id).then(p => {
-    if (!p) return;
-    const s = p.summary;
-    const chips = (label, list, cls) => list.length ? `<span class="k">${label}</span>${list.map(t => `<span class="${cls}">${esc(t)}</span>`).join('')}` : '';
-    const n = (k, one) => (k ? `${k} ${one}${k === 1 ? '' : one.endsWith('s') ? 'es' : 's'}` : '');
-    $('#pvContext').innerHTML = chips('Reads', s.reads, 'chip-r') + chips('Writes', s.writes, 'chip-w') + chips('Deletes', s.deletes, 'chip-d') +
-      chips('Publishes', s.publishes, 'chip-a') + chips('Calls', s.calls, 'chip-a') +
-      `<span class="counts">${[n(s.decisions, 'decision'), n(s.errorEnds, 'error end'), n(s.subprocesses, 'sub-process')].filter(Boolean).join(' · ')}</span>`;
-    if (app.selected) processView.select(app.selected);
-  }).catch(e => { status('Could not lay out the process: ' + e.message); hideProcess(); });
+  const sep = '<span aria-hidden="true">/</span>';
+  const crumbs = [`<button data-action="show-all">Endpoints</button>`, ...(path.length ? [] : [`<span>${esc(owner)}</span>`]),
+    path.length ? `<button data-action="collapse-all">${esc(ep.http || ep.label)}</button>` : `<b>${esc(ep.http || ep.label)}</b>`,
+    ...path.map((name, i) => (i === path.length - 1 ? `<b>${esc(name)}</b>` : `<span>${esc(name)}</span>`))];
+  $('#pvCrumbs').innerHTML = crumbs.join(sep);
+  const s = p.summary;
+  const chips = (label, list, cls) => list.length ? `<span class="k">${label}</span>${list.map(t => `<span class="${cls}">${esc(t)}</span>`).join('')}` : '';
+  const n = (k, one) => (k ? `${k} ${one}${k === 1 ? '' : one.endsWith('s') ? 'es' : 's'}` : '');
+  $('#pvContext').innerHTML = chips('Reads', s.reads, 'chip-r') + chips('Writes', s.writes, 'chip-w') + chips('Deletes', s.deletes, 'chip-d') +
+    chips('Publishes', s.publishes, 'chip-a') + chips('Calls', s.calls, 'chip-a') +
+    `<span class="counts">${[n(s.decisions, 'decision'), n(s.errorEnds, 'error end'), n(s.subprocesses, 'sub-process')].filter(Boolean).join(' · ')}</span>`;
+  const expand = $('#pvExpand');
+  expand.hidden = !p.subprocesses.length;
+  expand.textContent = processView.anyOpen ? 'Collapse all' : 'Expand all';
+  if (app.selected) processView.select(app.selected);
 }
 
 function hideProcess() {
@@ -477,6 +488,7 @@ function wireToolbar() {
   $('#toProcess').onclick = () => setProcessMode('process');
   $$('[data-pv-zoom]').forEach(b => { b.onclick = () => processView.zoom(Number(b.dataset.pvZoom)); });
   $('#pvFit').onclick = () => processView.fit();
+  $('#pvExpand').onclick = () => (processView.anyOpen ? processView.collapseAll() : processView.expandAll());
   $('#reindexBtn').onclick = () => app.projectPath && indexProject(app.projectPath, { keepView: true });
   $('#cancelBtn').onclick = () => app.job.cancel && app.job.cancel();
   $('#watchToggle').onchange = e => setWatch(e.target.checked);
@@ -545,6 +557,7 @@ function runAction(action, data = {}) {
     case 'toggle-theme': return $('#themeBtn').click();
     case 'toggle-branches': { const cb = $('#layerFilters input[data-layer="flow"]'); cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); return; }
     case 'show-all': return showAll();
+    case 'collapse-all': return processView.collapseAll();
     case 'find': $('#searchInput').focus(); $('#searchInput').select(); return;
     case 'help-mcp': return showMcpHelp();
     case 'help-shortcuts': return showShortcuts();
