@@ -70,6 +70,9 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npx playwright-core install --with-deps chromium
+      - name: Unit tests
+        working-directory: viewer
+        run: npm test
       - name: Run e2e
         working-directory: viewer
         run: npm run e2e

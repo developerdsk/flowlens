@@ -35,8 +35,8 @@ Turn the approved design into the real FlowLens viewer, one small PR at a time.
 
 | # | PR | Branch | Status | Link |
 |---|---|---|---|---|
-| 1 | Analyzer: step order and return types | `process-view/01-call-order` | open | [#5](https://github.com/developerdsk/flowlens/pull/5) |
-| 2 | Viewer: process model, no UI | `process-view/02-process-model` | todo | |
+| 1 | Analyzer: step order and return types | `process-view/01-call-order` | merged | [#5](https://github.com/developerdsk/flowlens/pull/5) |
+| 2 | Viewer: process model, no UI | `process-view/02-process-model` | open | [#6](https://github.com/developerdsk/flowlens/pull/6) |
 | 3 | Theme tokens and fonts | `process-view/03-tokens` | todo | |
 | 4 | Toolbar and sidebar layout | `process-view/04-shell` | todo | |
 | 5 | Process view, read-only (preview) | `process-view/05-process-view` | todo | |
