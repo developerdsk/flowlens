@@ -3,7 +3,7 @@
 Turn the approved design into the real FlowLens viewer, one small PR at a time.
 
 - **Design (approved 2026-10-25):** https://claude.ai/artifact/Via71WZ4NuwVaojK3dGmKg. It has four boards: the endpoint process, a sub-process expanded in place, the all-endpoints catalog, and notation and layout rules.
-- **Status:** the "Progress" table below is the source of truth. Update it whenever a PR is opened or merged.
+- **Status:** done. All 10 PRs were merged on 2026-10-30 and shipped in v0.2.9; the process view is the default. The "Progress" table below is the record.
 
 ## How to resume
 
@@ -14,7 +14,7 @@ Turn the approved design into the real FlowLens viewer, one small PR at a time.
 
 ## Ground rules
 
-- **Each merge to `main` publishes a desktop release** (`.github/workflows/release.yml`). The new view stays behind **Options → "Process view (preview)"**, off by default, until PR 10. With it off, the app behaves exactly as before.
+- **Each merge to `main` publishes a desktop release** (`.github/workflows/release.yml`). The new view stayed behind **Options → "Process view (preview)"**, off by default, until PR 10 removed the option.
 - **Analyzer changes only add fields** (no `SCHEMA_VERSION` bump). Older viewers, the MCP server and saved `.flowlens` snapshots keep working. Snapshots without the new fields fall back to edge-list order.
 - **The Cytoscape graph stays.** It becomes "Call graph" in the Process / Call graph switch and "Map" in the Catalog / Map switch.
 - **Fonts:** bundle IBM Plex Sans and Mono (OFL licence) under `viewer/fonts/`. The desktop app has to work offline, so no Google Fonts.
@@ -44,7 +44,7 @@ Turn the approved design into the real FlowLens viewer, one small PR at a time.
 | 7 | Expand sub-processes in place | `process-view/07-drill-in` | merged | [#11](https://github.com/developerdsk/flowlens/pull/11) |
 | 8 | All-endpoints catalog | `process-view/08-catalog` | merged | [#12](https://github.com/developerdsk/flowlens/pull/12) |
 | 9 | Compare and export in the process view | `process-view/09-compare-export` | merged | [#13](https://github.com/developerdsk/flowlens/pull/13) |
-| 10 | Make the process view the default | `process-view/10-default` | open | [#14](https://github.com/developerdsk/flowlens/pull/14) |
+| 10 | Make the process view the default | `process-view/10-default` | merged | [#14](https://github.com/developerdsk/flowlens/pull/14) |
 
 Statuses: `todo` → `in progress` → `open` → `merged`.
 
