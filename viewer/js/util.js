@@ -27,5 +27,5 @@ export function joinPath(root, rel) {
   return root.replace(/[\\/]+$/, '') + sep + String(rel).split('/').join(sep);
 }
 
-export const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+export const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 export const modKey = isMac ? '⌘' : 'Ctrl';

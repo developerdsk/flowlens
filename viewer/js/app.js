@@ -7,6 +7,7 @@ import { Sidebar } from './sidebar.js';
 import { DetailPanel } from './detail.js';
 import { Minimap } from './minimap.js';
 import { ProcessView } from './processView.js';
+import { catalogModel, renderCatalog } from './catalog.js';
 import { toPng, toSvg, toMermaid, toSnapshot, parseSnapshot } from './export.js';
 import * as platform from './desktop.js';
 
@@ -22,6 +23,8 @@ const app = {
   selected: null,
   engine: null,
   processMode: 'process', // or 'graph': which view an endpoint opens in while the preview is on
+  allView: 'catalog', // or 'map': what "All endpoints" shows while the preview is on
+  catalog: null, // { graph, model, filter } of the drawn catalog
 };
 
 let flow, sidebar, detail, minimap, processView;
@@ -236,9 +239,14 @@ function setGraph(graph, { keepView = false, sample = false, diff = false } = {}
 
 /** Show the endpoint on screen as a process when the preview is on and the process view is chosen. */
 function syncProcess() {
-  const on = getState().processPreview && flow.view.mode === 'endpoint';
-  $('#toProcess').hidden = !on || app.processMode === 'process';
+  const preview = getState().processPreview;
+  const all = preview && flow.view.mode === 'all';
+  const on = preview && flow.view.mode === 'endpoint';
+  $('#toProcess').hidden = !(on && app.processMode !== 'process') && !(all && app.allView === 'map');
+  $('#toProcess').textContent = all ? 'Catalog' : 'Process view';
+  if (all && app.allView === 'catalog') return showCatalog();
   if (!on || app.processMode !== 'process') return hideProcess();
+  $('#catalog').hidden = true;
   const ep = flow.byId.get(flow.view.id);
   $('#process').hidden = false;
   $('.canvas').classList.add('pv-on');
@@ -266,9 +274,30 @@ function showProcessChrome(p, path) {
   if (app.selected) processView.select(app.selected);
 }
 
+// ------------------------------------------------------------------------------------------
+// all-endpoints catalog (preview)
+// ------------------------------------------------------------------------------------------
+
+function showCatalog() {
+  $('#process').hidden = true;
+  $('.canvas').classList.add('pv-on');
+  const el = $('#catalog');
+  if (app.catalog?.graph !== app.graph) app.catalog = { graph: app.graph, model: catalogModel(app.graph), filter: app.catalog?.filter || 'all' };
+  renderCatalog(el, app.catalog.model, { filter: app.catalog.filter, query: $('#searchInput').value, view: app.allView });
+  if (el.hidden) detail.clear('Pick an entry point to open its process.');
+  el.hidden = false;
+}
+
 function hideProcess() {
+  $('#catalog').hidden = true;
   $('#process').hidden = true;
   $('.canvas').classList.remove('pv-on');
+}
+
+function setAllView(view) {
+  app.allView = view;
+  syncProcess();
+  if (view === 'map') { flow.cy?.resize(); flow.fit(); minimap.schedule(); }
 }
 
 function setProcessMode(mode) {
@@ -287,8 +316,8 @@ function showProject(sample) {
 
 function showAll({ quiet } = {}) {
   sidebar.setActive(null);
-  hideProcess();
   const n = flow.showAll();
+  syncProcess();
   if (!quiet) status(`Showing all entry points (${n} nodes).`);
   if (n > 1500) status(`Showing ${n} nodes — pick an entry point in the sidebar for a clearer view.`);
   minimap.schedule();
@@ -485,7 +514,15 @@ function wireToolbar() {
   $('#searchKey').textContent = modKey + 'K';
   $('#optProcess').onchange = e => { saveState({ processPreview: e.target.checked }); setProcessMode('process'); };
   $$('[data-pv-view]').forEach(b => { b.onclick = () => setProcessMode(b.dataset.pvView); });
-  $('#toProcess').onclick = () => setProcessMode('process');
+  $('#toProcess').onclick = () => (flow.view.mode === 'all' ? setAllView('catalog') : setProcessMode('process'));
+  $('#catalog').addEventListener('click', e => {
+    const open = e.target.closest('[data-open]');
+    if (open) return showEndpoint(open.dataset.open);
+    const filter = e.target.closest('[data-cat-filter]');
+    if (filter) { app.catalog.filter = filter.dataset.catFilter; return showCatalog(); }
+    const view = e.target.closest('[data-cat-view]');
+    if (view) setAllView(view.dataset.catView);
+  });
   $$('[data-pv-zoom]').forEach(b => { b.onclick = () => processView.zoom(Number(b.dataset.pvZoom)); });
   $('#pvFit').onclick = () => processView.fit();
   $('#pvExpand').onclick = () => (processView.anyOpen ? processView.collapseAll() : processView.expandAll());
@@ -624,6 +661,7 @@ function search(q) {
     }
   }
   flow.highlight(hits);
+  if (!$('#catalog').hidden) showCatalog();
 }
 
 function buildLayerFilters() {

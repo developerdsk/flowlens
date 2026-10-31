@@ -160,6 +160,43 @@ try {
     assert.ok(visible >= 8 && visible < 20, 'visible nodes: ' + visible);
   });
 
+  await step('catalog (preview): cards, filters, search, map, open a process', async () => {
+    const cards = () => page.$$eval('#catalog .cat-card', els => els.length);
+    await page.click('#openMenu [data-menu-toggle]');
+    await page.check('#optProcess');
+    await page.click('#openMenu [data-menu-toggle]');
+    await page.click('[data-all]');
+    await page.waitForSelector('#catalog:not([hidden]) .cat-card');
+    assert.equal(await cards(), 5);
+    assert.match(await page.textContent('#catalog .cat-totals'), /5 entry points · 2 tables · 1 topic · 1 HTTP service/);
+    assert.match(await page.textContent('#catalog .cat-card:has-text("purgeClosedAccounts")'), /Runs daily at 03:00/);
+    await page.click('[data-cat-filter="writes"]');
+    assert.equal(await cards(), 4);
+    await page.click('[data-cat-filter="errors"]');
+    assert.equal(await cards(), 1);
+    await page.click('[data-cat-filter="all"]');
+    await page.fill('#searchInput', 'status');
+    await page.waitForFunction(() => document.querySelectorAll('#catalog .cat-card').length === 1);
+    await page.fill('#searchInput', '');
+    await page.waitForFunction(() => document.querySelectorAll('#catalog .cat-card').length === 5);
+    await page.click('[data-cat-view="map"]');
+    assert.equal(await page.isHidden('#catalog'), true);
+    assert.equal(await page.textContent('#toProcess'), 'Catalog');
+    await page.click('#toProcess');
+    await page.waitForSelector('#catalog:not([hidden])');
+    await page.click('#catalog .cat-card:has-text("/api/accounts/{id}/status")');
+    await page.waitForFunction(() => /PATCH \/api\/accounts\/\{id\}\/status/.test(document.querySelector('#pvCrumbs').textContent));
+    assert.equal(await page.isHidden('#catalog'), true);
+    assert.deepEqual(await page.$$eval('#process .pv-step b', els => els.map(e => e.textContent)), ['updateStatus()', 'record()']);
+    await page.click('#pvCrumbs [data-action="show-all"]');
+    await page.waitForSelector('#catalog:not([hidden])');
+    await page.click('#openMenu [data-menu-toggle]');
+    await page.uncheck('#optProcess');
+    await page.click('#openMenu [data-menu-toggle]');
+    assert.equal(await page.isHidden('#catalog'), true);
+    assert.ok(await page.evaluate(() => window.flowlens.flow.visibleNodes().length) > 10, 'the map is back');
+  });
+
   await step('search is in the toolbar and opens with Ctrl/Cmd+K', async () => {
     await page.click('#cy');
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k');
@@ -270,6 +307,10 @@ try {
     })));
     assert.ok(depth >= 1 && depth <= 4, 'nesting depth ' + depth);
     await page.click('#pvExpand');
+    await page.click('[data-all]');
+    await page.waitForSelector('#catalog:not([hidden]) .cat-card');
+    const eps = await page.evaluate(() => window.flowlens.app.graph.nodes.filter(n => n.type === 'endpoint').length);
+    assert.equal(await page.$$eval('#catalog .cat-card', els => els.length), eps);
     await page.click('#openMenu [data-menu-toggle]');
     await page.uncheck('#optProcess');
     await page.click('#openMenu [data-menu-toggle]');

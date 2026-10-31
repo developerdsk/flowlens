@@ -4,7 +4,7 @@
   "description": "Unit and end-to-end tests for the FlowLens viewer (the viewer itself has no build step).",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/process.test.mjs tests/theme.test.mjs",
+    "test": "node --test tests/process.test.mjs tests/catalog.test.mjs tests/theme.test.mjs",
     "e2e": "node tests/e2e.mjs"
   },
   "devDependencies": {
