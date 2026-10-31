@@ -58,6 +58,9 @@ try {
   await step('sample graph is shown on start', async () => {
     await page.waitForSelector('[data-ep]');
     assert.equal(await page.textContent('#countEndpoints'), '5');
+    await page.waitForSelector('#catalog:not([hidden]) .cat-card');
+    assert.equal(await page.textContent('#panel'), 'Pick an entry point to open its process.');
+    assert.equal(await page.$('#optProcess'), null, 'no preview switch');
   });
 
   await step('bundled fonts load (no network fonts)', async () => {
@@ -76,8 +79,9 @@ try {
     assert.equal(await page.isVisible('#openMenu .menu-pop'), false, 'menu closes after indexing');
   });
 
-  await step('select an endpoint shows its flow and lineage', async () => {
+  await step('select an endpoint opens its process, with lineage', async () => {
     await page.click('[data-ep]:has-text("/api/accounts") >> nth=0');
+    await page.waitForSelector('#process:not([hidden]) .pv-step');
     await page.waitForSelector('#panel h2');
     assert.equal(await page.textContent('#panel h2'), 'POST /api/accounts');
     assert.match(await page.textContent('#panel'), /request\.email\s*→\s*account\.email/);
@@ -85,12 +89,7 @@ try {
     assert.ok(visible >= 8 && visible < 20, 'visible nodes: ' + visible);
   });
 
-  await step('process view (preview): steps in order, lanes, error end', async () => {
-    await page.click('#openMenu [data-menu-toggle]');
-    await page.check('#optProcess');
-    await page.click('#openMenu [data-menu-toggle]');
-    await page.click('[data-ep]:has-text("/api/accounts") >> nth=0');
-    await page.waitForSelector('#process:not([hidden]) .pv-step');
+  await step('process view: steps in order, lanes, error end', async () => {
     const steps = await page.$$eval('#process .pv-step', els => els
       .sort((a, b) => a.dataset.order - b.dataset.order).map(e => e.querySelector('b').textContent));
     assert.deepEqual(steps, ['existsByEmail()', 'save()', 'record()', 'onAccountCreated()']);
@@ -139,7 +138,7 @@ try {
     assert.equal(await page.textContent('#pvExpand'), 'Expand all');
   });
 
-  await step('process view: select, keyboard, switch to call graph, turn off', async () => {
+  await step('process view: select, keyboard, switch to the call graph and back', async () => {
     await page.click('.pv-step:has-text("save()")');
     assert.equal(await page.textContent('#panel h2'), 'save()');
     assert.equal(await page.$$eval('.pv-node.selected', els => els.length), 2, 'the step and its table card');
@@ -148,23 +147,18 @@ try {
     assert.equal(await page.evaluate(() => document.activeElement.dataset.order), '1');
     await page.click('[data-pv-view="graph"]');
     assert.equal(await page.isHidden('#process'), true);
-    await page.click('#toProcess');
-    await page.waitForSelector('#process:not([hidden]) .pv-step');
-    await page.click('#openMenu [data-menu-toggle]');
-    await page.uncheck('#optProcess');
-    await page.click('#openMenu [data-menu-toggle]');
-    assert.equal(await page.isHidden('#process'), true);
+    await page.click('[data-ep]:has-text("/api/accounts/{id}/status")');
+    assert.equal(await page.isHidden('#process'), true, 'the call graph stays chosen for the next endpoint');
     await page.click('[data-ep]:has-text("/api/accounts") >> nth=0');
     assert.equal(await page.textContent('#panel h2'), 'POST /api/accounts');
     const visible = await page.evaluate(() => window.flowlens.flow.visibleNodes().length);
     assert.ok(visible >= 8 && visible < 20, 'visible nodes: ' + visible);
+    await page.click('#toProcess');
+    await page.waitForSelector('#process:not([hidden]) .pv-step');
   });
 
-  await step('catalog (preview): cards, filters, search, map, open a process', async () => {
+  await step('catalog: cards, filters, search, map, open a process', async () => {
     const cards = () => page.$$eval('#catalog .cat-card', els => els.length);
-    await page.click('#openMenu [data-menu-toggle]');
-    await page.check('#optProcess');
-    await page.click('#openMenu [data-menu-toggle]');
     await page.click('[data-all]');
     await page.waitForSelector('#catalog:not([hidden]) .cat-card');
     assert.equal(await cards(), 5);
@@ -190,9 +184,7 @@ try {
     assert.deepEqual(await page.$$eval('#process .pv-step b', els => els.map(e => e.textContent)), ['updateStatus()', 'record()']);
     await page.click('#pvCrumbs [data-action="show-all"]');
     await page.waitForSelector('#catalog:not([hidden])');
-    await page.click('#openMenu [data-menu-toggle]');
-    await page.uncheck('#optProcess');
-    await page.click('#openMenu [data-menu-toggle]');
+    await page.click('[data-cat-view="map"]');
     assert.equal(await page.isHidden('#catalog'), true);
     assert.ok(await page.evaluate(() => window.flowlens.flow.visibleNodes().length) > 10, 'the map is back');
   });
@@ -252,10 +244,7 @@ try {
     await page.click('#bannerExit');
   });
 
-  await step('compare and export in the process view (preview)', async () => {
-    await page.click('#openMenu [data-menu-toggle]');
-    await page.check('#optProcess');
-    await page.click('#openMenu [data-menu-toggle]');
+  await step('compare and export in the process view', async () => {
     await page.click('#compareMenu [data-menu-toggle]');
     await page.click('[data-action="compare-ref"]');
     await page.fill('#promptInput', 'HEAD');
@@ -287,9 +276,6 @@ try {
     assert.ok(png.readUInt32BE(16) > 1000 && png.readUInt32BE(20) > 500, `png ${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`);
     await page.click('#bannerExit');
     await page.waitForFunction(() => !document.querySelector('.pv-card.diff-added'));
-    await page.click('#openMenu [data-menu-toggle]');
-    await page.uncheck('#optProcess');
-    await page.click('#openMenu [data-menu-toggle]');
   });
 
   await step('watch mode re-indexes on save', async () => {
@@ -324,13 +310,11 @@ try {
     assert.ok(nodes > 700, 'nodes: ' + nodes);
     await page.click('.tab[data-tab="endpoints"]');
     await page.click('[data-all]');
+    assert.equal(await page.isHidden('#catalog'), true, 'the map stays chosen');
     await page.waitForTimeout(500);
   });
 
-  await step('large project: process view preview of a looping flow', async () => {
-    await page.click('#openMenu [data-menu-toggle]');
-    await page.check('#optProcess');
-    await page.click('#openMenu [data-menu-toggle]');
+  await step('large project: process view of a looping flow', async () => {
     await page.click('[data-ep]:has-text("/c7")');
     await page.waitForSelector('#process:not([hidden]) .pv-step');
     assert.ok(await page.$$eval('.pv-card', els => els.length) >= 3, 'tables of the collapsed sub-process stay visible');
@@ -348,12 +332,10 @@ try {
     assert.ok(depth >= 1 && depth <= 4, 'nesting depth ' + depth);
     await page.click('#pvExpand');
     await page.click('[data-all]');
+    await page.click('#toProcess');
     await page.waitForSelector('#catalog:not([hidden]) .cat-card');
     const eps = await page.evaluate(() => window.flowlens.app.graph.nodes.filter(n => n.type === 'endpoint').length);
     assert.equal(await page.$$eval('#catalog .cat-card', els => els.length), eps);
-    await page.click('#openMenu [data-menu-toggle]');
-    await page.uncheck('#optProcess');
-    await page.click('#openMenu [data-menu-toggle]');
   });
 
   await step('no console errors', async () => assert.deepEqual(errors, [], errors.join(' | ')));

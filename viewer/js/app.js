@@ -22,8 +22,8 @@ const app = {
   fingerprint: null,
   selected: null,
   engine: null,
-  processMode: 'process', // or 'graph': which view an endpoint opens in while the preview is on
-  allView: 'catalog', // or 'map': what "All endpoints" shows while the preview is on
+  processMode: 'process', // or 'graph': which view an endpoint opens in
+  allView: 'catalog', // or 'map': what "All endpoints" shows
   catalog: null, // { graph, model, filter } of the drawn catalog
 };
 
@@ -78,7 +78,6 @@ let flow, sidebar, detail, minimap, processView;
     onZoom: s => { $('#pvZoom').textContent = Math.round(s * 100) + '%'; },
     onModel: showProcessChrome,
   });
-  $('#optProcess').checked = !!state.processPreview;
   window.flowlens = { app, flow, sidebar, processView };   // handle for end-to-end tests and debugging
 
   buildLayerFilters();
@@ -229,19 +228,18 @@ function setGraph(graph, { keepView = false, sample = false, diff = false } = {}
     } else showAll({ quiet: true });
   }
   if (prevSelected && flow.byId.has(prevSelected)) selectNode(prevSelected, { fromGraph: true });
-  else detail.clear();
+  else detail.clear($('#catalog').hidden ? undefined : PICK_ENTRY);
   minimap.schedule();
 }
 
 // ------------------------------------------------------------------------------------------
-// process view (preview)
+// process view
 // ------------------------------------------------------------------------------------------
 
-/** Show the endpoint on screen as a process when the preview is on and the process view is chosen. */
+/** Show the endpoint on screen as a process, or All endpoints as the catalog, unless the call graph or map is chosen. */
 function syncProcess() {
-  const preview = getState().processPreview;
-  const all = preview && flow.view.mode === 'all';
-  const on = preview && flow.view.mode === 'endpoint';
+  const all = flow.view.mode === 'all';
+  const on = flow.view.mode === 'endpoint';
   $('#toProcess').hidden = !(on && app.processMode !== 'process') && !(all && app.allView === 'map');
   $('#toProcess').textContent = all ? 'Catalog' : 'Process view';
   if (all && app.allView === 'catalog') return showCatalog();
@@ -275,8 +273,10 @@ function showProcessChrome(p, path) {
 }
 
 // ------------------------------------------------------------------------------------------
-// all-endpoints catalog (preview)
+// all-endpoints catalog
 // ------------------------------------------------------------------------------------------
+
+const PICK_ENTRY = 'Pick an entry point to open its process.';
 
 function showCatalog() {
   $('#process').hidden = true;
@@ -284,7 +284,7 @@ function showCatalog() {
   const el = $('#catalog');
   if (app.catalog?.graph !== app.graph) app.catalog = { graph: app.graph, model: catalogModel(app.graph), filter: app.catalog?.filter || 'all' };
   renderCatalog(el, app.catalog.model, { filter: app.catalog.filter, query: $('#searchInput').value, view: app.allView });
-  if (el.hidden) detail.clear('Pick an entry point to open its process.');
+  if (el.hidden) detail.clear(PICK_ENTRY);
   el.hidden = false;
 }
 
@@ -518,7 +518,6 @@ function wireToolbar() {
     indexProject(e.target.value);
   });
   $('#searchKey').textContent = modKey + 'K';
-  $('#optProcess').onchange = e => { saveState({ processPreview: e.target.checked }); setProcessMode('process'); };
   $$('[data-pv-view]').forEach(b => { b.onclick = () => setProcessMode(b.dataset.pvView); });
   $('#toProcess').onclick = () => (flow.view.mode === 'all' ? setAllView('catalog') : setProcessMode('process'));
   $('#catalog').addEventListener('click', e => {

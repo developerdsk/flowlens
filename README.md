@@ -11,7 +11,7 @@ service, which Kafka topic. It also traces which request field ends up in which 
 It reads **source only** — no build, no running app, no instrumentation. Nothing leaves your machine.
 
 <p align="center">
-  <img src="docs/images/walkthrough.gif" alt="FlowLens walkthrough: indexing a 524-file Spring project, picking an endpoint, inspecting a step, and viewing who writes a table" width="900">
+  <img src="docs/images/walkthrough.gif" alt="FlowLens walkthrough: indexing a 524-file Spring project, the all-endpoints catalog, an endpoint as a process, a sub-process opened in place, and who writes a table" width="900">
   <br><sub>30-second tour on <a href="https://github.com/macrozheng/mall">macrozheng/mall</a> (7 modules, 524 files) ·
   <a href="docs/images/walkthrough.mp4">watch as MP4</a></sub>
 </p>
@@ -38,20 +38,26 @@ No Java needed — the app bundles its own runtime. Then **Open project…**, pi
 
 ## Screenshots
 
-**One endpoint, end to end.** `POST /api/accounts` → service implementation (found through the
-interface) → the `if` that guards a `throw` → the tables it reads and writes, the audit insert, and the
-Kafka event and HTTP call made by an event listener. On the right: request-field → column lineage and
-the source.
+**One endpoint, as a process.** `POST /api/accounts`, step by step in call order: the `if` that guards
+a `throw` is a decision with its error end, each step points at the table it reads or writes, and the
+event listener's Kafka message and HTTP call sit in their own lanes. Sub-processes (`+`) open in place,
+and the full call graph is one click away. On the right: request-field → column lineage and the source.
 
-![Endpoint flow with lineage](docs/images/endpoint-flow.png)
+![Endpoint process with lineage](docs/images/endpoint-flow.png)
+
+**Every endpoint at a glance.** *All endpoints* opens a catalog: one card per entry point with a sketch of
+its steps and what it reads, writes, publishes and calls. Filter to the ones that write data or can fail;
+*Map* shows them all as one graph.
+
+![All-endpoints catalog](docs/images/catalog.png)
 
 <table>
 <tr>
 <td width="50%"><b>Who touches this table?</b><br>Pick a table to see every entry point that reads or writes it, and the path it takes (macrozheng/mall, <code>oms_order</code>).<br><br><img src="docs/images/tables-view.png" alt="Tables view"></td>
-<td width="50%"><b>Big real projects</b><br>248 endpoints across 7 modules, MyBatis XML mappers, RabbitMQ listeners; branches and loops as diamonds.<br><br><img src="docs/images/large-project.png" alt="Large project flow"></td>
+<td width="50%"><b>Big real projects</b><br>248 endpoints across 7 modules, MyBatis XML mappers, RabbitMQ listeners; here <code>cancelOrder()</code> is opened in place.<br><br><img src="docs/images/large-project.png" alt="Large project process"></td>
 </tr>
 <tr>
-<td><b>Compare with a git branch</b><br>Added (green), removed (red, dashed) and changed (orange) steps; affected endpoints are marked in the sidebar.<br><br><img src="docs/images/compare.png" alt="Compare mode"></td>
+<td><b>Compare with a git branch</b><br>Added (green), removed (red, dashed) and changed (orange) steps and tables, inside opened sub-processes too; affected endpoints are marked in the sidebar.<br><br><img src="docs/images/compare.png" alt="Compare mode"></td>
 <td><b>Every step explained</b><br>Branch conditions, mutations, callers/callees, highlighted source, one click to open it in VS Code, IntelliJ or Cursor.<br><br><img src="docs/images/detail-source.png" alt="Detail panel"></td>
 </tr>
 <tr>
@@ -66,7 +72,10 @@ the source.
 ## What you get
 
 - **Endpoint explorer** — every entry point grouped by class, like a Postman collection; search.
-- **Flow graph** — controller → services → repositories → tables / HTTP / topics, with `if`/`switch`
+- **Process view** — each entry point as ordered steps in lanes (service, database, async listeners,
+  external systems), with decisions, error ends and sub-processes that open in place.
+- **Catalog** — all entry points as cards: a sketch of the steps, tables, topics, services, schedules.
+- **Call graph** — controller → services → repositories → tables / HTTP / topics, with `if`/`switch`
   branches and throws as nodes; dashed edges where FlowLens is unsure.
 - **Tables view** — pick a table and see every endpoint that reads or writes it.
 - **Detail panel** — field lineage (`request.email → account.email_address`), SQL, conditions,
@@ -89,9 +98,9 @@ the source.
 
 ```
   Java sources ──► engine (analyzer/, Java)            ──► graph.json ──► viewer (viewer/, JS)
-                   JavaParser + FlowLens type resolver                     Cytoscape UI
-                   entry points → call walk → sinks                        in the desktop app
-                   lineage, diff, MCP, local API                           or a browser
+                   JavaParser + FlowLens type resolver                     process view (elkjs),
+                   entry points → call walk → sinks                        call graph (Cytoscape),
+                   lineage, diff, MCP, local API                           desktop app or browser
 ```
 
 The desktop app (`desktop/`, Tauri 2) bundles the engine with a minimal Java runtime and talks to it
