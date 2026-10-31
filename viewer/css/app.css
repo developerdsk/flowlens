@@ -354,7 +354,7 @@ ul.list li.nav small { display: block; color: var(--muted); font-size: 11px; }
 .banner { max-width: calc(100% - 40px); flex-wrap: wrap; justify-content: center; }
 .canvas.pv-on .banner { z-index: 8; top: auto; bottom: 16px; }
 
-/* --- process view (preview) ------------------------------------------------------------------- */
+/* --- process view ----------------------------------------------------------------------------- */
 .process { position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; background: var(--bg); }
 .canvas.pv-on .canvas-tools, .canvas.pv-on .legend, .canvas.pv-on .minimap { display: none; }
 .pv-header { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
@@ -465,7 +465,7 @@ ul.list li.nav small { display: block; color: var(--muted); font-size: 11px; }
 .pv-event + .pv-diff { right: auto; left: 50%; transform: translateX(-50%); top: -14px; }
 .pv-caption.start b, .pv-caption.start small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
-/* --- all-endpoints catalog (preview) ---------------------------------------------------------- */
+/* --- all-endpoints catalog -------------------------------------------------------------------- */
 .catalog { position: absolute; inset: 0; z-index: 7; overflow: auto; display: flex; flex-direction: column; gap: 20px; padding: 24px 28px 40px; background: var(--bg); }
 .cat-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; }
 .cat-head > div:first-child { display: flex; flex-direction: column; gap: 4px; margin-right: auto; }

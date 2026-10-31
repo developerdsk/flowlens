@@ -26,6 +26,9 @@ Run on **clean** machines/VMs **without Java installed**, using the installers f
 
 ## Features
 - [ ] Endpoint tree, search, Tables tab, Issues tab
+- [ ] An endpoint opens as a process; Process / Call graph switch; a sub-process opens in place; Expand / Collapse all, zoom, Fit
+- [ ] *All endpoints* opens the catalog: filters, search, Catalog / Map switch; a card opens its process
+- [ ] Compare marks steps and tables in the process view; Export PNG / SVG from the process view
 - [ ] Open in VS Code / IntelliJ buttons open the right file and line (with the IDE installed)
 - [ ] Export PNG / SVG / Mermaid, Save/Open snapshot via native dialogs
 - [ ] Double-clicking a `.flowlens` file opens it (app closed and app already running)

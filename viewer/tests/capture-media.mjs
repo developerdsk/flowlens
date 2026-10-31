@@ -55,17 +55,28 @@ const selectByLabel = (page, label) => page.evaluate(l => {
   const n = window.flowlens.flow.graph.nodes.find(x => x.label === l);
   window.flowlens.flow.cy.getElementById(n.id).emit('tap');
 }, label);
+const step = (page, label) => page.evaluate(l => {
+  const n = window.flowlens.flow.graph.nodes.find(x => x.label === l);
+  document.querySelector(`#process [data-node-id="${CSS.escape(n.id)}"]`).click();
+}, label);
+const processShown = page => page.waitForSelector('#process:not([hidden]) .pv-node');
 
 // ---------------------------------------------------------------- screenshots
 const shots = process.env.ONLY !== 'video';
 if (shots) {
   const { context, page } = await newPage('dark');
   await index(page, sample);
+  await page.click('[data-all]');
+  await page.waitForSelector('#catalog:not([hidden]) .cat-card');
+  await pause(300);
+  await page.screenshot({ path: join(out, 'catalog.png') });
+
   await endpoint(page, 'POST /api/accounts');
+  await processShown(page);
   await pause(500);
   await page.screenshot({ path: join(out, 'endpoint-flow.png') });
 
-  await selectByLabel(page, 'AuditService.record()');
+  await step(page, 'AuditService.record()');
   await pause(400);
   await page.screenshot({ path: join(out, 'detail-source.png') });
 
@@ -81,6 +92,9 @@ if (shots) {
   await page.click('#modalActions button[value="ok"]');
   await page.waitForFunction(() => /Compared with/.test(document.querySelector('#status').textContent));
   await endpoint(page, 'POST /api/accounts');
+  await processShown(page);
+  await page.click('[aria-label="Expand record()"]');
+  await page.waitForSelector('.pv-container');
   await pause(500);
   await page.screenshot({ path: join(out, 'compare.png') });
   writeFileSync(audit, original);
@@ -97,7 +111,8 @@ if (shots) {
   const { context, page } = await newPage('light');
   await index(page, sample);
   await endpoint(page, 'POST /api/accounts');
-  await selectByLabel(page, 'if (accountRepository.existsByEmail(request.getEmail()))');
+  await processShown(page);
+  await step(page, 'if (accountRepository.existsByEmail(request.getEmail()))');
   await pause(400);
   await page.screenshot({ path: join(out, 'light-theme.png') });
   await context.close();
@@ -106,6 +121,10 @@ if (shots) {
   const { context, page } = await newPage('dark');
   await index(page, large);
   await endpoint(page, 'POST /order/cancelUserOrder');
+  await processShown(page);
+  await page.click('[aria-label="Expand cancelOrder()"]');
+  await page.waitForSelector('.pv-container');
+  for (let i = 0; i < 2; i++) await page.click('[data-pv-zoom="1"]');
   await pause(600);
   await page.screenshot({ path: join(out, 'large-project.png') });
   await page.click('.tab[data-tab="tables"]');
@@ -154,14 +173,25 @@ if (process.env.ONLY !== 'screenshots') {
   await slowType('#pathInput', large);
   await page.click('#indexBtn');
   await page.waitForFunction(() => /Indexed/.test(document.querySelector('#status').textContent), null, { timeout: 120000 });
-  await caption('248 entry points found, grouped by controller, like a Postman collection', 2600);
+  await caption('248 entry points found, grouped by controller, like a Postman collection', 2200);
+  await page.click('[data-all]');
+  await caption('All endpoints at a glance: what each one does, step by step', 2600);
   await page.fill('#searchInput', 'order');
   await page.dispatchEvent('#searchInput', 'input');
   await caption('2. Search and pick an endpoint', 1500);
   await endpoint(page, 'POST /order/cancelUserOrder');
-  await caption('3. Its whole flow: services, branches, tables, message queues', 3200);
-  await selectByLabel(page, 'OmsPortalOrderServiceImpl.cancelOrder()');
-  await caption('Click any step for conditions, mutations and source, then open it in your IDE', 3200);
+  await processShown(page);
+  for (let i = 0; i < 2; i++) await page.click('[data-pv-zoom="1"]');
+  await caption('3. Its flow as a process: steps in order, decisions, the tables and queues it touches', 3400);
+  await step(page, 'OmsPortalOrderServiceImpl.cancelOrder()');
+  await caption('Click any step for conditions, mutations and source, then open it in your IDE', 3000);
+  await page.click('[aria-label="Expand cancelOrder()"]');
+  await page.waitForSelector('.pv-container');
+  for (let i = 0; i < 3; i++) await page.click('[data-pv-zoom="1"]');
+  await caption('Open a sub-process in place to see its own steps', 2800);
+  await page.click('[data-pv-view="graph"]');
+  await caption('Or switch to the full call graph', 2400);
+  await page.click('#toProcess');
   await page.fill('#searchInput', '');
   await page.dispatchEvent('#searchInput', 'input');
   await page.click('.tab[data-tab="tables"]');

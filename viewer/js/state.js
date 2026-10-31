@@ -5,7 +5,7 @@ import { isDesktop, invoke } from './api.js';
 const KEY = 'flowlens.state.v1';
 const defaults = {
   theme: 'auto', layoutDir: 'LR', showBranches: true, includeTests: false,
-  recent: [], lastEndpoint: {}, layers: null, sidebarTab: 'endpoints', processPreview: false, ide: 0,
+  recent: [], lastEndpoint: {}, layers: null, sidebarTab: 'endpoints', ide: 0,
 };
 let state = { ...defaults };
 
