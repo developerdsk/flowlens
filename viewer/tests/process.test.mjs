@@ -263,6 +263,32 @@ test('ends inside an opened sub-process carry their parent', () => {
   assert.equal(p.ends.find(e => e.kind === 'return').parent, null);
 });
 
+/** The sample as a compare would show it after record() switched its insert from audit_log to audit_events. */
+function compared() {
+  const g = structuredClone(sample);
+  const record = g.nodes.find(n => n.label === 'AuditService.record()');
+  record.diff = 'changed';
+  g.nodes.find(n => n.http === 'POST /api/accounts').diff = 'affected';
+  const old = g.edges.find(e => e.source === record.id && e.target === 'DB:INSERT:audit_log');
+  old.diff = 'removed';
+  g.nodes.push({ id: 'DB:INSERT:audit_events', label: 'INSERT audit_events', type: 'db', op: 'INSERT', table: 'audit_events', diff: 'added' });
+  g.edges.push({ ...old, target: 'DB:INSERT:audit_events', diff: 'added', seq: old.seq + 1 });
+  return g;
+}
+
+test('a compare marks steps and cards: added, removed, changed', () => {
+  const g = compared();
+  const ep = endpoint(g, 'POST /api/accounts');
+  const p = buildProcess(g, ep);
+  const record = p.steps.find(s => s.name === 'record()');
+  assert.equal(record.diff, 'changed');
+  assert.deepEqual(p.tables.filter(t => t.step === record.id).map(t => [t.table, t.diff]), [['audit_log', 'removed'], ['audit_events', 'added']]);
+  assert.ok(p.steps.filter(s => s !== record).every(s => s.diff === null), 'nothing else changed');
+  const open = buildProcess(g, ep, { expanded: [record.id] });
+  assert.deepEqual(open.steps.filter(s => s.parent === record.id).map(s => [s.name, s.diff]), [['update()', 'removed'], ['update()', 'added']]);
+  assert.deepEqual(buildProcess(sample, ep).steps.map(s => s.diff), [null, null, null, null, null], 'no compare, no marks');
+});
+
 test('labels', () => {
   assert.equal(shortCondition('if (accountRepository.existsByEmail(request.getEmail()))'), 'existsByEmail(…)');
   assert.equal(shortCondition('if (vip)'), 'vip');

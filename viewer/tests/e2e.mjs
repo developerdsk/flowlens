@@ -252,6 +252,46 @@ try {
     await page.click('#bannerExit');
   });
 
+  await step('compare and export in the process view (preview)', async () => {
+    await page.click('#openMenu [data-menu-toggle]');
+    await page.check('#optProcess');
+    await page.click('#openMenu [data-menu-toggle]');
+    await page.click('#compareMenu [data-menu-toggle]');
+    await page.click('[data-action="compare-ref"]');
+    await page.fill('#promptInput', 'HEAD');
+    await page.click('#modalActions button[value="ok"]');
+    await waitStatus(/Compared with HEAD/);
+    await page.click('.tab[data-tab="endpoints"]');
+    await page.click('[data-ep]:has-text("/api/accounts") >> nth=0');
+    await page.waitForSelector('#process:not([hidden]) .pv-card.diff-added');
+    assert.ok(await page.isVisible('#bannerExit'), 'the compare banner stays on top of the process view');
+    assert.match(await page.textContent('.pv-card.diff-added'), /audit_events/);
+    assert.match(await page.textContent('.pv-card.diff-removed'), /audit_log/);
+    assert.match(await page.textContent('.pv-step.diff-changed'), /record\(\)/);
+    assert.deepEqual(await page.$$eval('.pv-diff', els => els.map(e => e.textContent).sort()), ['added', 'changed', 'removed']);
+    assert.equal(await page.$$eval('.pv-step.diff-added, .pv-step.diff-removed', els => els.length), 0, 'collapsed record() hides its steps');
+    await page.click('[aria-label="Expand record()"]');
+    await page.waitForSelector('.pv-container');
+    assert.deepEqual(await page.$$eval('.pv-step.diff-added b, .pv-step.diff-removed b', els => els.map(e => e.textContent)), ['update()', 'update()']);
+    assert.equal(await page.$$eval('.pv-step.diff-removed', els => els.length), 1);
+    const download = async action => {
+      await page.click('#exportMenu [data-menu-toggle]');
+      const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`[data-action="${action}"]`)]);
+      return readFileSync(await dl.path());
+    };
+    const svg = (await download('export-svg')).toString();
+    assert.match(svg, /^<svg xmlns/);
+    for (const want of ['audit_events', 'audit_log', 'ADDED', 'REMOVED', 'CHANGED', 'line-through', 'publishEvent', 'IllegalStateException']) assert.ok(svg.includes(want), want);
+    const png = await download('export-png');
+    assert.equal(png.subarray(1, 4).toString(), 'PNG');
+    assert.ok(png.readUInt32BE(16) > 1000 && png.readUInt32BE(20) > 500, `png ${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`);
+    await page.click('#bannerExit');
+    await page.waitForFunction(() => !document.querySelector('.pv-card.diff-added'));
+    await page.click('#openMenu [data-menu-toggle]');
+    await page.uncheck('#optProcess');
+    await page.click('#openMenu [data-menu-toggle]');
+  });
+
   await step('watch mode re-indexes on save', async () => {
     await page.check('#watchToggle');
     assert.equal(await page.textContent('#watchLabel'), 'Watching');
